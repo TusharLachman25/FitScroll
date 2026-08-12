@@ -1,0 +1,13 @@
+# Normalise to LF in the repository. gradlew is executed by CI on Linux and a
+# CRLF shebang line makes the kernel fail to find /bin/sh.
+* text=auto eol=lf
+
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+*.jar  binary
+*.png  binary
+*.jpg  binary
+*.webp binary
+*.ico  binary
+*.keystore binary
