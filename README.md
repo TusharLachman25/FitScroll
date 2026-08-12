@@ -13,7 +13,7 @@ FitScroll counts your push-ups with your phone's camera, banks each rep as one m
 | **Earn** | Camera + on-device pose detection counts push-ups. 1 clean rep = 1 minute. |
 | **Bank** | Each minute expires exactly 24h after it was earned. Oldest minutes are spent first, so nothing evaporates that could have been used. |
 | **Spend** | While a blocked app is in the foreground, your balance drains in real time — one second per second. |
-| **Lock** | At zero, the blocked app is covered by a lock screen. Mid-scroll, not just on open. |
+| **Lock** | At zero, a lock screen lands **on top of** the blocked app — mid-scroll, not just on open. Leaving it drops you to the home screen, so there's no way through it. |
 
 Everything runs on-device. No account, no server, no sync, no telemetry.
 
@@ -85,11 +85,13 @@ Settings has a 1–5 dial. Each level tightens four things at once, because loos
 
 | Level | | Elbow depth | Lockout | Body line | Sag allowance | Min rep time |
 |---|---|---|---|---|---|---|
-| 1 | Casual | 115° | 145° | 100° | 1.5s | 0.35s |
-| 2 | Relaxed | 105° | 150° | 118° | 1.1s | 0.45s |
-| 3 | Standard | 90° | 156° | 132° | 0.8s | 0.60s |
-| 4 | Strict | 80° | 162° | 144° | 0.5s | 0.75s |
-| 5 | Brutal | 72° | 168° | 155° | 0.3s | 0.90s |
+| 1 | Casual | 115° | 142° | 100° | 1.50s | 0.35s |
+| 2 | Relaxed | 105° | 148° | 116° | 1.10s | 0.45s |
+| 3 | Standard | 92° | 152° | 128° | 0.80s | 0.60s |
+| 4 | Strict | 82° | 157° | 138° | 0.55s | 0.75s |
+| 5 | Brutal | 72° | 162° | 148° | 0.35s | 0.90s |
+
+**Tracking confidence is not on this dial**, and that's deliberate. It used to be — higher levels demanded a higher landmark likelihood — which meant level 5 was quietly asking for a *better view of you*, not a better push-up. Looking down at the floor is enough to drop the pose model's confidence across every landmark, so reps stopped counting entirely at level 5 while the identical rep counted at level 1. There is now a single visibility floor for all five levels; strictness governs form only.
 
 The workout screen draws the tracked skeleton live: arms brighten as you approach the required depth, and the plank line turns red the moment your hips leave tolerance. That's there so a rejected rep reads as feedback rather than as a broken app.
 
@@ -121,7 +123,7 @@ docs/      Setup guides, including the iOS Shortcuts automation
 
 ## Tests
 
-74 tests, no device required. The bank and the rep counter are pure functions taking an explicit `now`, so every rule — expiry boundaries, oldest-first spending, cap overflow, each anti-cheat gate, and the noise tolerance that stops clean reps being thrown away — is pinned down on both platforms.
+76 tests, no device required. The bank and the rep counter are pure functions taking an explicit `now`, so every rule — expiry boundaries, oldest-first spending, cap overflow, each anti-cheat gate, and the noise tolerance that stops clean reps being thrown away — is pinned down on both platforms.
 
 ## License
 

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 
 import { COACHING, PHASE, PushUpCounter, angleAt, profileFor } from '../js/counter.js';
 
-const standard = profileFor(3); // down 90, up 156, body 132, grace 800ms, 600ms
-const casual = profileFor(1); // down 115, up 145, body 100, grace 1500ms, 350ms
-const brutal = profileFor(5); // down 72, up 168, body 155, grace 300ms, 900ms
+const standard = profileFor(3); // down 92, up 152, body 128, grace 800ms, 600ms
+const casual = profileFor(1); // down 115, up 142, body 100, grace 1500ms, 350ms
+const brutal = profileFor(5); // down 72, up 162, body 148, grace 350ms, 900ms
 
 const FRAME_MS = 33; // ~30fps
 const SETTLE = 300; // long enough for the angle smoother to converge
@@ -203,6 +203,24 @@ test('brutal demands a slower rep than standard accepts', () => {
 
   assert.equal(run(standard), 1);
   assert.equal(run(brutal), 0);
+});
+
+test('middling tracking confidence counts on every level', () => {
+  // Confidence used to scale with the dial, so the same clean rep counted on
+  // level 1 and silently vanished on level 5. Looking down at the floor drops
+  // the pose model's likelihood across every landmark, which meant the top
+  // levels were quietly demanding a better view rather than a better push-up.
+  const run = (profile) => {
+    const counter = new PushUpCounter(profile);
+    const opts = { confidence: 0.45, bodyConfidence: 0.45 };
+    const top = holdFor(counter, 178, 0, SETTLE, opts);
+    holdFor(counter, 65, top, 900, opts);
+    frame(counter, 178, top + 1200, opts);
+    return counter.reps;
+  };
+
+  assert.equal(run(casual), 1);
+  assert.equal(run(brutal), 1);
 });
 
 test('casual tolerates a body line that brutal rejects', () => {

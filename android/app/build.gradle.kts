@@ -14,8 +14,8 @@ android {
         applicationId = "com.fitscroll.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // x86 and x86_64 only ever run on emulators. Excluding them here rather

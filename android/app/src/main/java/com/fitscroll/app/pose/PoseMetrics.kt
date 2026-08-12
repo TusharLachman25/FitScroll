@@ -5,6 +5,22 @@ import kotlin.math.acos
 import kotlin.math.hypot
 
 /**
+ * Landmark likelihood below which a reading is not worth acting on.
+ *
+ * Deliberately one value for every strictness level. Tying this to the dial was
+ * a mistake: it made level 5 demand not just better form but better *visibility*,
+ * and ML Kit's likelihood scores move with things that have nothing to do with
+ * the quality of a push-up. Looking down at the floor hides your face, drops the
+ * scores across every landmark, and reps stopped being counted at all — the
+ * counter was reporting "I cannot see you" while the user was doing everything
+ * right.
+ *
+ * Strictness governs form. This governs whether we can see well enough to have
+ * an opinion at all.
+ */
+const val MIN_TRACKING_CONFIDENCE = 0.35f
+
+/**
  * The three numbers the rep counter actually reasons about, distilled from a
  * full skeleton so the counting logic stays free of ML Kit types and testable
  * on the JVM.

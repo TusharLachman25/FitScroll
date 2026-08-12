@@ -95,7 +95,7 @@ class PushUpCounter(private var profile: StrictnessProfile) {
         val frameDelta = frameDelta(nowMillis)
         lastFrameAt = nowMillis
 
-        if (metrics == null || metrics.confidence < profile.minConfidence) {
+        if (metrics == null || metrics.confidence < MIN_TRACKING_CONFIDENCE) {
             // Losing the subject must not wipe the rep count — people drop out
             // of frame between sets — but the in-flight rep is void, since we
             // cannot vouch for what happened while we could not see them.
@@ -119,7 +119,7 @@ class PushUpCounter(private var profile: StrictnessProfile) {
         // Only judge the back when the torso landmarks are actually trustworthy.
         // A guessed knee produces a nonsense body line, and failing reps on it
         // is worse than not checking at all.
-        val formJudged = metrics.bodyConfidence >= profile.minConfidence
+        val formJudged = metrics.bodyConfidence >= MIN_TRACKING_CONFIDENCE
         val body = if (formJudged) {
             Geometry.smooth(smoothedBody, metrics.bodyLineAngle).also { smoothedBody = it }
         } else {

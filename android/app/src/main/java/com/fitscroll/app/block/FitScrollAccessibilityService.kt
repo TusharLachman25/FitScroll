@@ -89,18 +89,19 @@ class FitScrollAccessibilityService : AccessibilityService() {
 
     private fun onForegroundApp(foreground: String) {
         if (foreground == packageName) {
-            // Our own UI, most likely the workout screen the lock just sent
-            // them to. Nothing to charge and nothing to cover.
-            lockOverlay.hide()
+            // Our own UI. The overlay is deliberately left alone: it is our
+            // window too, and on some devices attaching it reports FitScroll as
+            // foreground, which would tear the lock down the instant it
+            // appeared. The buttons hide it explicitly when they are used.
             stopDrain()
             return
         }
 
         if (foreground !in settings.current.blockedPackages) {
+            // Swiping away to something else counts as backing off, so the lock
+            // should not follow the user around on top of unrelated apps.
+            lockOverlay.hide()
             stopDrain()
-            // The overlay is deliberately not dismissed here. Locking ejects to
-            // the launcher first, which arrives as exactly this case, and
-            // hiding on it would tear the lock down the instant it appeared.
             return
         }
 
@@ -170,7 +171,13 @@ class FitScrollAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Ejects from the blocked app and raises the lock screen over the launcher.
+     * Raises the lock screen directly over the blocked app.
+     *
+     * The lock deliberately lands on top of the app rather than bouncing the
+     * user to the launcher first. Being ejected with no explanation reads as
+     * the app glitching; a lock sitting over the feed reads as a lock. Leaving
+     * on either button then performs the eject, so nothing is actually usable
+     * underneath it.
      *
      * Guarded on the overlay already being up rather than on elapsed time. The
      * previous time-based debounce also suppressed a deliberate second attempt
@@ -179,16 +186,29 @@ class FitScrollAccessibilityService : AccessibilityService() {
     private fun lock(blockedPackage: String) {
         if (lockOverlay.isShowing) return
 
-        // Home first, so the lock covers the launcher rather than a feed that
-        // is still running, and still playing audio, underneath it.
-        performGlobalAction(GLOBAL_ACTION_HOME)
-
         lockOverlay.show(
             appLabel = AppInventory.labelFor(this, blockedPackage),
             balanceLabel = formatRemaining(bank.balanceSeconds()),
-            onEarn = ::openWorkout,
-            onDismiss = { },
+            onEarn = {
+                leaveBlockedApp()
+                openWorkout()
+            },
+            onDismiss = ::leaveBlockedApp,
         )
+
+        if (!lockOverlay.isShowing) {
+            // The window could not be attached. Fall back to ejecting, so a
+            // failure here degrades to a weaker block rather than to none.
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        }
+    }
+
+    /**
+     * Dismissing the lock must not drop the user back into the app it was
+     * covering, or "Not now" would simply be a way through.
+     */
+    private fun leaveBlockedApp() {
+        performGlobalAction(GLOBAL_ACTION_HOME)
     }
 
     private fun openWorkout() {

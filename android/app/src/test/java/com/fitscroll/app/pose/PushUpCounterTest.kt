@@ -16,9 +16,9 @@ import org.junit.Test
  */
 class PushUpCounterTest {
 
-    private val standard = StrictnessProfile.forLevel(3) // down 90, up 156, body 132, grace 800ms, 600ms
-    private val casual = StrictnessProfile.forLevel(1) // down 115, up 145, body 100, grace 1500ms, 350ms
-    private val brutal = StrictnessProfile.forLevel(5) // down 72, up 168, body 155, grace 300ms, 900ms
+    private val standard = StrictnessProfile.forLevel(3) // down 92, up 152, body 128, grace 800ms, 600ms
+    private val casual = StrictnessProfile.forLevel(1) // down 115, up 142, body 100, grace 1500ms, 350ms
+    private val brutal = StrictnessProfile.forLevel(5) // down 72, up 162, body 148, grace 350ms, 900ms
 
     private val frameMillis = 33L // ~30fps, matching the analysis stream
 
@@ -106,8 +106,7 @@ class PushUpCounterTest {
 
         assertEquals(0f, counter.frame(elbow = 175f, at = top).depth, 0.01f)
 
-        // Half way between the 156 lockout gate and the 90 depth gate.
-        val halfway = (156f + 90f) / 2f
+        val halfway = (standard.upElbowAngle + standard.downElbowAngle) / 2f
         counter.holdFor(elbow = halfway, startAt = top, durationMillis = settle)
         assertEquals(0.5f, counter.frame(halfway, at = top + 400L).depth, 0.08f)
     }
@@ -308,6 +307,34 @@ class PushUpCounterTest {
 
         assertEquals(1, runRep(standard)) // clears the 600ms floor
         assertEquals(0, runRep(brutal)) // misses the 900ms floor
+    }
+
+    @Test
+    fun `middling tracking confidence counts on every level`() {
+        // Confidence used to scale with the dial, so the same clean rep counted
+        // on level 1 and silently vanished on level 5. Looking down at the
+        // floor is enough to drop ML Kit's likelihood across every landmark,
+        // which meant the top levels were quietly demanding a better view
+        // rather than a better push-up.
+        fun runRep(profile: StrictnessProfile): Int {
+            val counter = PushUpCounter(profile)
+            val top = counter.holdFor(
+                elbow = 178f, startAt = 0L, durationMillis = settle,
+                confidence = 0.45f, bodyConfidence = 0.45f,
+            )
+            counter.holdFor(
+                elbow = 65f, startAt = top, durationMillis = 900L,
+                confidence = 0.45f, bodyConfidence = 0.45f,
+            )
+            counter.frame(
+                elbow = 178f, at = top + 1_200L,
+                confidence = 0.45f, bodyConfidence = 0.45f,
+            )
+            return counter.reps
+        }
+
+        assertEquals(1, runRep(casual))
+        assertEquals(1, runRep(brutal))
     }
 
     @Test

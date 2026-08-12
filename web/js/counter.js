@@ -6,16 +6,28 @@
  */
 
 /**
+ * Landmark likelihood below which a reading is not worth acting on.
+ *
+ * One value for every strictness level, on purpose. Tying this to the dial was
+ * a mistake: it made the top levels demand better *visibility* rather than
+ * better form, and pose-model confidence moves with things that have nothing to
+ * do with the quality of a push-up. Looking down at the floor hides the face,
+ * drops the scores across every landmark, and reps stopped counting at all -
+ * the counter reporting "I cannot see you" at someone doing everything right.
+ */
+export const MIN_TRACKING_CONFIDENCE = 0.35;
+
+/**
  * Strictness levels 1-5, identical to the Android profiles.
  *
- * Each level tightens five things at once. Loosening only depth produces a
+ * Each level tightens four things at once. Loosening only depth produces a
  * counter that pays a fast sloppy half-rep the same as a slow clean one.
  *
- * The body-line numbers sit well under a true 180-degree plank on purpose.
- * This is a 2D estimate from one camera, and unless the lens is exactly
- * perpendicular to you, perspective foreshortens the torso so a genuinely
- * straight back measures far lower. Geometrically "correct" thresholds reject
- * real push-ups at real phone placements.
+ * The body-line and lockout numbers sit well under their geometric ideals. This
+ * is a 2D estimate from one camera, and unless the lens is exactly
+ * perpendicular to you, perspective foreshortens both torso and arm, so a
+ * genuinely straight back and a genuinely locked elbow both measure lower than
+ * the textbook figure.
  */
 export const STRICTNESS = [
   {
@@ -23,55 +35,50 @@ export const STRICTNESS = [
     label: 'Casual',
     blurb: 'Counts almost any up-and-down. Good for warming up or an awkward camera angle.',
     downElbowAngle: 115,
-    upElbowAngle: 145,
+    upElbowAngle: 142,
     minBodyLineAngle: 100,
     formGraceMs: 1500,
     minRepMs: 350,
-    minConfidence: 0.3,
   },
   {
     level: 2,
     label: 'Relaxed',
     blurb: 'Forgiving on depth, still expects a recognisable push-up.',
     downElbowAngle: 105,
-    upElbowAngle: 150,
-    minBodyLineAngle: 118,
+    upElbowAngle: 148,
+    minBodyLineAngle: 116,
     formGraceMs: 1100,
     minRepMs: 450,
-    minConfidence: 0.4,
   },
   {
     level: 3,
     label: 'Standard',
     blurb: 'Roughly a gym-legal push-up: past 90 degrees, full lockout, straight back.',
-    downElbowAngle: 90,
-    upElbowAngle: 156,
-    minBodyLineAngle: 132,
+    downElbowAngle: 92,
+    upElbowAngle: 152,
+    minBodyLineAngle: 128,
     formGraceMs: 800,
     minRepMs: 600,
-    minConfidence: 0.5,
   },
   {
     level: 4,
     label: 'Strict',
     blurb: 'Chest low, full lockout, no hip sag. Expect your count to drop.',
-    downElbowAngle: 80,
-    upElbowAngle: 162,
-    minBodyLineAngle: 144,
-    formGraceMs: 500,
+    downElbowAngle: 82,
+    upElbowAngle: 157,
+    minBodyLineAngle: 138,
+    formGraceMs: 550,
     minRepMs: 750,
-    minConfidence: 0.58,
   },
   {
     level: 5,
     label: 'Brutal',
-    blurb: 'Near-floor depth, dead-straight body, no bouncing. Every minute is earned.',
+    blurb: 'Near-floor depth, dead-straight body, no bouncing. Set the phone side-on and level, or this one will fight you.',
     downElbowAngle: 72,
-    upElbowAngle: 168,
-    minBodyLineAngle: 155,
-    formGraceMs: 300,
+    upElbowAngle: 162,
+    minBodyLineAngle: 148,
+    formGraceMs: 350,
     minRepMs: 900,
-    minConfidence: 0.65,
   },
 ];
 
@@ -170,7 +177,7 @@ export class PushUpCounter {
         : Math.min(MAX_FRAME_DELTA_MS, Math.max(0, now - this.lastFrameAt));
     this.lastFrameAt = now;
 
-    if (!metrics || metrics.confidence < this.profile.minConfidence) {
+    if (!metrics || metrics.confidence < MIN_TRACKING_CONFIDENCE) {
       // Losing the subject keeps banked reps — people step out of frame between
       // sets — but voids the rep in flight, since we cannot vouch for what
       // happened while the camera could not see them.
@@ -190,7 +197,7 @@ export class PushUpCounter {
     // failing reps against a guessed joint is worse than not checking.
     const bodyConfidence =
       typeof metrics.bodyConfidence === 'number' ? metrics.bodyConfidence : metrics.confidence;
-    const formJudged = bodyConfidence >= this.profile.minConfidence;
+    const formJudged = bodyConfidence >= MIN_TRACKING_CONFIDENCE;
 
     let body = null;
     if (formJudged) {
