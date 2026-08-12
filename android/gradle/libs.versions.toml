@@ -8,6 +8,7 @@ composeBom = "2025.06.01"
 navigationCompose = "2.9.0"
 camerax = "1.4.2"
 mlkitPose = "18.0.0-beta5"
+coroutines = "1.10.2"
 junit = "4.13.2"
 robolectric = "4.14.1"
 
@@ -33,6 +34,8 @@ androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycl
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 
 mlkit-pose-detection = { group = "com.google.mlkit", name = "pose-detection", version.ref = "mlkitPose" }
+
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }

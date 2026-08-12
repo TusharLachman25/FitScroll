@@ -88,6 +88,7 @@ dependencies {
     implementation(libs.androidx.camera.view)
 
     implementation(libs.mlkit.pose.detection)
+    implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
