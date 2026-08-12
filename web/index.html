@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>FitScroll</title>
+    <meta name="description" content="Earn your scroll. One push-up buys one minute." />
+
+    <meta name="theme-color" content="#0B0F14" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="FitScroll" />
+
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <link rel="icon" href="icons/icon-192.png" />
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+
+  <body>
+    <!-- Home doubles as the gate. The iOS Shortcut opens this page whenever a
+         blocked app launches, so this is the screen that decides whether the
+         scroll is paid for. -->
+    <main id="view-home" class="view">
+      <header class="topbar">
+        <h1 class="wordmark">FitScroll</h1>
+        <button id="open-settings" class="icon-button" aria-label="Settings">&#9881;</button>
+      </header>
+
+      <section id="balance-card" class="card balance">
+        <p class="eyebrow" id="balance-eyebrow">Banked</p>
+        <p class="balance-value" id="balance-value">0m</p>
+        <p class="muted" id="balance-note"></p>
+      </section>
+
+      <div class="stat-row">
+        <div class="card stat">
+          <p class="eyebrow">Today</p>
+          <p class="stat-value" id="reps-today">0</p>
+          <p class="muted">push-ups</p>
+        </div>
+        <div class="card stat">
+          <p class="eyebrow">All time</p>
+          <p class="stat-value" id="reps-all-time">0</p>
+          <p class="muted">push-ups</p>
+        </div>
+      </div>
+
+      <div id="session-banner" class="card warn hidden">
+        <p class="warn-title">Session running</p>
+        <p class="muted">
+          Swipe back to your app. FitScroll settles the time when you return here.
+        </p>
+      </div>
+
+      <div class="actions">
+        <button id="start-workout" class="button primary">Earn minutes</button>
+        <button id="spend" class="button ghost">Start a session</button>
+      </div>
+
+      <p class="fine-print">
+        Everything runs on this device. No account, no server, no frame from the camera
+        ever leaves your phone.
+      </p>
+    </main>
+
+    <!-- Camera -->
+    <main id="view-workout" class="view hidden workout">
+      <video id="camera" playsinline muted autoplay></video>
+      <canvas id="overlay"></canvas>
+
+      <div class="scrim scrim-top"></div>
+      <div class="scrim scrim-bottom"></div>
+
+      <header class="topbar overlay-bar">
+        <button id="workout-back" class="icon-button" aria-label="Back">&#8592;</button>
+        <span class="pill" id="strictness-pill">STANDARD</span>
+        <button id="flip-camera" class="icon-button" aria-label="Flip camera">&#8634;</button>
+      </header>
+
+      <div class="hud">
+        <p id="rejection" class="rejection hidden"></p>
+
+        <div class="rep-ring">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="ring-track" cx="60" cy="60" r="52" />
+            <circle id="ring-progress" class="ring-progress" cx="60" cy="60" r="52" />
+          </svg>
+          <div class="rep-count">
+            <span id="rep-value">0</span>
+            <small id="rep-label">reps</small>
+          </div>
+        </div>
+
+        <p id="coaching" class="coaching">Get your whole body in frame</p>
+
+        <button id="bank-set" class="button primary" disabled>Do a rep to bank minutes</button>
+        <button id="discard-set" class="button ghost hidden">Discard set</button>
+      </div>
+
+      <div id="camera-error" class="camera-error hidden">
+        <h2>Camera unavailable</h2>
+        <p class="muted" id="camera-error-detail"></p>
+      </div>
+    </main>
+
+    <!-- Settings -->
+    <main id="view-settings" class="view hidden">
+      <header class="topbar">
+        <button id="settings-back" class="icon-button" aria-label="Back">&#8592;</button>
+        <h1 class="wordmark">Settings</h1>
+      </header>
+
+      <p class="section-label">Form strictness</p>
+      <section class="card">
+        <div class="segmented" id="strictness-picker" role="group" aria-label="Form strictness"></div>
+        <p class="strictness-label" id="strictness-name"></p>
+        <p class="muted" id="strictness-blurb"></p>
+        <p class="muted dim" id="strictness-detail"></p>
+      </section>
+
+      <p class="section-label">Bank limit</p>
+      <section class="card">
+        <p class="stat-value" id="cap-value">24h</p>
+        <p class="muted">
+          The most you can hold at once. Reps past this stop counting, so a huge
+          session cannot buy a whole week.
+        </p>
+        <input id="cap-slider" type="range" min="0" max="11" step="1" />
+      </section>
+
+      <p class="section-label">The app you are gating</p>
+      <section class="card">
+        <label class="field-label" for="target-scheme">Deep link</label>
+        <input id="target-scheme" type="text" spellcheck="false" autocapitalize="none" />
+        <p class="muted">
+          Used by the "Start a session" button. <code>instagram://app</code> opens
+          Instagram; change it to gate something else.
+        </p>
+      </section>
+
+      <p class="section-label">Danger zone</p>
+      <section class="card">
+        <button id="clear-bank" class="button danger">Clear banked minutes</button>
+      </section>
+
+      <p class="section-label">iPhone setup</p>
+      <section class="card">
+        <p class="muted">
+          iOS gives no app the ability to block another one, so FitScroll pairs with a
+          Shortcuts automation that opens this page whenever your chosen app launches.
+          Full walkthrough in <strong>docs/IOS_SETUP.md</strong> in the repository.
+        </p>
+      </section>
+
+      <p class="fine-print" id="version-line"></p>
+    </main>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
