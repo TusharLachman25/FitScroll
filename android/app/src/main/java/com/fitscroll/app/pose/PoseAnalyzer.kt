@@ -118,18 +118,27 @@ class PoseAnalyzer(private val onResult: (PoseResult) -> Unit) : ImageAnalysis.A
             right == null -> left
             else -> {
                 val weight = left.confidence + right.confidence
+                val bodyWeight = left.bodyConfidence + right.bodyConfidence
                 if (weight <= 0f) {
                     left
                 } else {
                     PoseMetrics(
                         elbowAngle = (left.elbowAngle * left.confidence +
                             right.elbowAngle * right.confidence) / weight,
-                        bodyLineAngle = (left.bodyLineAngle * left.confidence +
-                            right.bodyLineAngle * right.confidence) / weight,
+                        // The body line is blended by torso confidence rather
+                        // than arm confidence, so a clearly visible arm cannot
+                        // lend authority to a guessed knee on the same side.
+                        bodyLineAngle = if (bodyWeight <= 0f) {
+                            left.bodyLineAngle
+                        } else {
+                            (left.bodyLineAngle * left.bodyConfidence +
+                                right.bodyLineAngle * right.bodyConfidence) / bodyWeight
+                        },
                         // The clearer side vouches for the blend; averaging the
                         // confidences would let an occluded limb suppress a
                         // perfectly good reading.
                         confidence = max(left.confidence, right.confidence),
+                        bodyConfidence = max(left.bodyConfidence, right.bodyConfidence),
                     )
                 }
             }
@@ -150,14 +159,6 @@ class PoseAnalyzer(private val onResult: (PoseResult) -> Unit) : ImageAnalysis.A
         val hip = pose.getPoseLandmark(hipType) ?: return null
         val knee = pose.getPoseLandmark(kneeType) ?: return null
 
-        val confidence = minOf(
-            shoulder.inFrameLikelihood,
-            elbow.inFrameLikelihood,
-            wrist.inFrameLikelihood,
-            hip.inFrameLikelihood,
-            knee.inFrameLikelihood,
-        )
-
         return PoseMetrics(
             elbowAngle = Geometry.angle(
                 shoulder.position.x, shoulder.position.y,
@@ -169,7 +170,19 @@ class PoseAnalyzer(private val onResult: (PoseResult) -> Unit) : ImageAnalysis.A
                 hip.position.x, hip.position.y,
                 knee.position.x, knee.position.y,
             ),
-            confidence = confidence,
+            // Counting only needs the arm chain. Folding the knee into this
+            // would block rep counting entirely for anyone whose legs sit
+            // outside the frame, which is a very ordinary way to prop a phone.
+            confidence = minOf(
+                shoulder.inFrameLikelihood,
+                elbow.inFrameLikelihood,
+                wrist.inFrameLikelihood,
+            ),
+            bodyConfidence = minOf(
+                shoulder.inFrameLikelihood,
+                hip.inFrameLikelihood,
+                knee.inFrameLikelihood,
+            ),
         )
     }
 

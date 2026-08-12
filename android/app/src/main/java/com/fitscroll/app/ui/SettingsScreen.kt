@@ -141,9 +141,9 @@ fun SettingsScreen(
         SettingRow(
             title = "Display over other apps",
             subtitle = if (BlockingStatus.canDrawOverlays(context)) {
-                "On — the lock screen can cover a blocked app"
+                "On — the lock screen can open the camera for you"
             } else {
-                "Off — blocking falls back to pressing home"
+                "Off — optional. Blocking still works; the lock's button just won't jump to the camera"
             },
             onClick = { BlockingStatus.openOverlaySettings(context) },
         )

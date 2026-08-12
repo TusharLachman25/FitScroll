@@ -21,6 +21,8 @@ data class WorkoutUiState(
     val coaching: Coaching = Coaching.FINDING_YOU,
     val depth: Float = 0f,
     val formOk: Boolean = true,
+    /** False when the torso landmarks are too uncertain to judge the back. */
+    val formJudged: Boolean = true,
     val rejection: String? = null,
     val skeleton: SkeletonFrame? = null,
     val phase: RepPhase = RepPhase.SEARCHING,
@@ -62,6 +64,7 @@ class WorkoutViewModel(application: Application) : AndroidViewModel(application)
             coaching = update.coaching,
             depth = update.depth,
             formOk = update.formOk,
+            formJudged = update.formJudged,
             rejection = update.rejection,
             skeleton = result.skeleton,
             phase = update.phase,

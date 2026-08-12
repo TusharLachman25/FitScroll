@@ -43,14 +43,12 @@ object BlockingStatus {
     /**
      * True when FitScroll may draw over other apps.
      *
-     * Android 10 and up refuse background activity launches unless the app
-     * holds this, which is exactly what raising the lock screen over Instagram
-     * is. Without it the block degrades to a bare press of the home button.
+     * Not required for blocking. The lock screen is an accessibility overlay,
+     * a window type the service is granted directly. This permission only
+     * governs whether the lock's "earn minutes" button can open the camera,
+     * since Android 10+ refuses background activity launches without it.
      */
     fun canDrawOverlays(context: Context): Boolean = AndroidSettings.canDrawOverlays(context)
-
-    fun isFullyArmed(context: Context): Boolean =
-        isAccessibilityServiceEnabled(context) && canDrawOverlays(context)
 
     fun openAccessibilitySettings(context: Context) {
         context.startActivity(

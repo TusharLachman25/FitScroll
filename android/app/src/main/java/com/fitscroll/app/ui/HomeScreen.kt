@@ -66,7 +66,10 @@ fun HomeScreen(
     val bankState by bank.state.collectAsStateWithLifecycle()
     val settingsState by settings.state.collectAsStateWithLifecycle()
 
-    var armed by remember { mutableStateOf(BlockingStatus.isFullyArmed(context)) }
+    var accessibilityOn by remember {
+        mutableStateOf(BlockingStatus.isAccessibilityServiceEnabled(context))
+    }
+    var overlayOn by remember { mutableStateOf(BlockingStatus.canDrawOverlays(context)) }
 
     // The balance moves without any action on this screen: credits expire on a
     // wall clock, and the accessibility service drains it from another
@@ -75,7 +78,8 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         while (true) {
             bank.refresh()
-            armed = BlockingStatus.isFullyArmed(context)
+            accessibilityOn = BlockingStatus.isAccessibilityServiceEnabled(context)
+            overlayOn = BlockingStatus.canDrawOverlays(context)
             delay(1_000)
         }
     }
@@ -114,12 +118,18 @@ fun HomeScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        if (!armed) {
-            SetupWarningCard(
-                accessibilityOn = BlockingStatus.isAccessibilityServiceEnabled(context),
-                overlayOn = BlockingStatus.canDrawOverlays(context),
-                onFixAccessibility = { BlockingStatus.openAccessibilitySettings(context) },
-                onFixOverlay = { BlockingStatus.openOverlaySettings(context) },
+        // Only the accessibility service is load-bearing. The lock screen is an
+        // accessibility overlay the service is granted directly, so blocking
+        // works without the draw-over permission — that one only buys the
+        // shortcut from the lock straight into the camera.
+        if (!accessibilityOn) {
+            BlockingOffCard(
+                onFix = { BlockingStatus.openAccessibilitySettings(context) },
+            )
+            Spacer(Modifier.height(16.dp))
+        } else if (!overlayOn) {
+            OverlayHintCard(
+                onFix = { BlockingStatus.openOverlaySettings(context) },
             )
             Spacer(Modifier.height(16.dp))
         }
@@ -210,47 +220,68 @@ private fun BalanceCard(
 }
 
 @Composable
-private fun SetupWarningCard(
-    accessibilityOn: Boolean,
-    overlayOn: Boolean,
-    onFixAccessibility: () -> Unit,
-    onFixOverlay: () -> Unit,
-) {
+private fun BlockingOffCard(onFix: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Amber.copy(alpha = 0.12f))
+            .background(Crimson.copy(alpha = 0.13f))
             .padding(18.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.Warning, contentDescription = null, tint = Amber)
+            Icon(Icons.Rounded.Warning, contentDescription = null, tint = Crimson)
             Spacer(Modifier.size(10.dp))
             Text(
                 text = "Blocking is not active",
                 style = MaterialTheme.typography.titleMedium,
-                color = Amber,
+                color = Crimson,
             )
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "You can still bank minutes, but nothing will be locked until " +
-                "both permissions are on. Android requires each to be granted by hand.",
+            text = "You can bank minutes, but nothing will be locked until the " +
+                "accessibility service is on. Android only lets you grant it by hand.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextMuted,
         )
-        Spacer(Modifier.height(12.dp))
-        if (!accessibilityOn) {
-            PermissionRow("Accessibility service", onFixAccessibility)
-        }
-        if (!overlayOn) {
-            PermissionRow("Display over other apps", onFixOverlay)
-        }
+        Spacer(Modifier.height(8.dp))
+        PermissionRow("Turn on accessibility", onFix, tint = Crimson)
     }
 }
 
 @Composable
-private fun PermissionRow(label: String, onClick: () -> Unit) {
+private fun OverlayHintCard(onFix: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Amber.copy(alpha = 0.10f))
+            .padding(18.dp),
+    ) {
+        Text(
+            text = "Optional",
+            style = MaterialTheme.typography.labelSmall,
+            color = Amber,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Blocking works already. Allowing FitScroll to display over " +
+                "other apps just lets the lock screen's button open the camera " +
+                "for you instead of you finding the app yourself.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextMuted,
+        )
+        Spacer(Modifier.height(4.dp))
+        PermissionRow("Allow display over other apps", onFix, tint = Amber)
+    }
+}
+
+@Composable
+private fun PermissionRow(
+    label: String,
+    onClick: () -> Unit,
+    tint: androidx.compose.ui.graphics.Color,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -259,10 +290,9 @@ private fun PermissionRow(label: String, onClick: () -> Unit) {
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = tint)
         Spacer(Modifier.weight(1f))
-        Text("Turn on", style = MaterialTheme.typography.labelLarge, color = Amber)
-        Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = Amber)
+        Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = tint)
     }
 }
 

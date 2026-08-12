@@ -14,8 +14,21 @@ data class PoseMetrics(
     val elbowAngle: Float,
     /** Shoulder-hip-knee, in degrees. 180 is a flat plank. */
     val bodyLineAngle: Float,
-    /** Lowest landmark likelihood among the joints used, 0..1. */
+    /**
+     * Lowest likelihood across the arm chain (shoulder, elbow, wrist), 0..1.
+     * Gates whether the frame can be counted at all.
+     */
     val confidence: Float,
+    /**
+     * Lowest likelihood across the torso chain (shoulder, hip, knee), 0..1.
+     *
+     * Tracked separately from [confidence] because the two fail independently:
+     * with your legs out of frame the model still emits a knee, it is just
+     * guessing. Judging a back against a guessed joint produces "straighten
+     * your back" at someone whose back is fine, so the counter declines to
+     * judge form at all when this is low rather than failing the rep.
+     */
+    val bodyConfidence: Float,
 )
 
 object Geometry {

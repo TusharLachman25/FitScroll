@@ -3,39 +3,43 @@ import assert from 'node:assert/strict';
 
 import { COACHING, PHASE, PushUpCounter, angleAt, profileFor } from '../js/counter.js';
 
-const standard = profileFor(3); // down 90, up 156, body 150, 600ms
-const casual = profileFor(1); // down 115, up 145, body 115, 350ms
-const brutal = profileFor(5); // down 72, up 168, body 165, 900ms
+const standard = profileFor(3); // down 90, up 156, body 132, grace 800ms, 600ms
+const casual = profileFor(1); // down 115, up 145, body 100, grace 1500ms, 350ms
+const brutal = profileFor(5); // down 72, up 168, body 155, grace 300ms, 900ms
 
 const FRAME_MS = 33; // ~30fps
+const SETTLE = 300; // long enough for the angle smoother to converge
 
-/** Holds an angle for several frames so the smoother converges. */
-function hold(counter, elbow, startAt, { body = 180, confidence = 0.9, frames = 8 } = {}) {
+/** Feeds a held pose at camera frame rate, as a real descent arrives. */
+function holdFor(counter, elbow, startAt, durationMs, opts = {}) {
+  const { body = 180, confidence = 0.9, bodyConfidence = 0.9 } = opts;
   let t = startAt;
-  for (let i = 0; i < frames; i += 1) {
-    counter.onFrame({ elbowAngle: elbow, bodyLineAngle: body, confidence }, t);
+  const end = startAt + durationMs;
+  while (t <= end) {
+    counter.onFrame({ elbowAngle: elbow, bodyLineAngle: body, confidence, bodyConfidence }, t);
     t += FRAME_MS;
   }
   return t;
 }
 
-function frame(counter, elbow, at, { body = 180, confidence = 0.9 } = {}) {
-  return counter.onFrame({ elbowAngle: elbow, bodyLineAngle: body, confidence }, at);
+function frame(counter, elbow, at, opts = {}) {
+  const { body = 180, confidence = 0.9, bodyConfidence = 0.9 } = opts;
+  return counter.onFrame(
+    { elbowAngle: elbow, bodyLineAngle: body, confidence, bodyConfidence },
+    at,
+  );
 }
 
 test('angleAt measures a straight line as 180 degrees', () => {
-  const straight = angleAt({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 });
-  assert.ok(Math.abs(straight - 180) < 0.001);
-
-  const right = angleAt({ x: 0, y: 1 }, { x: 0, y: 0 }, { x: 1, y: 0 });
-  assert.ok(Math.abs(right - 90) < 0.001);
+  assert.ok(Math.abs(angleAt({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }) - 180) < 0.001);
+  assert.ok(Math.abs(angleAt({ x: 0, y: 1 }, { x: 0, y: 0 }, { x: 1, y: 0 }) - 90) < 0.001);
 });
 
 test('a clean controlled rep counts', () => {
   const counter = new PushUpCounter(standard);
-  const topDone = hold(counter, 175, 0);
-  hold(counter, 70, topDone);
-  const result = frame(counter, 175, topDone + 900);
+  const top = holdFor(counter, 175, 0, SETTLE);
+  holdFor(counter, 70, top, 500);
+  const result = frame(counter, 175, top + 900);
 
   assert.equal(counter.reps, 1);
   assert.equal(result.repJustCounted, true);
@@ -43,12 +47,12 @@ test('a clean controlled rep counts', () => {
 
 test('consecutive reps accumulate', () => {
   const counter = new PushUpCounter(standard);
-  let t = hold(counter, 175, 0);
+  let t = holdFor(counter, 175, 0, SETTLE);
 
   for (let i = 0; i < 5; i += 1) {
-    const bottomAt = t;
-    hold(counter, 70, bottomAt);
-    t = bottomAt + 900;
+    const descentAt = t;
+    holdFor(counter, 70, descentAt, 500);
+    t = descentAt + 900;
     frame(counter, 175, t);
     t += FRAME_MS;
   }
@@ -58,18 +62,18 @@ test('consecutive reps accumulate', () => {
 
 test('a half rep that never reaches depth does not count', () => {
   const counter = new PushUpCounter(standard);
-  const topDone = hold(counter, 175, 0);
-  const bottomDone = hold(counter, 120, topDone);
-  frame(counter, 175, bottomDone + 900);
+  const top = holdFor(counter, 175, 0, SETTLE);
+  holdFor(counter, 120, top, 500);
+  frame(counter, 175, top + 900);
 
   assert.equal(counter.reps, 0);
 });
 
 test('a rep faster than the minimum duration is rejected', () => {
   const counter = new PushUpCounter(standard);
-  const topDone = hold(counter, 175, 0);
-  hold(counter, 70, topDone);
-  const result = frame(counter, 175, topDone + 200);
+  const top = holdFor(counter, 175, 0, SETTLE);
+  holdFor(counter, 70, top, 100);
+  const result = frame(counter, 175, top + 200);
 
   assert.equal(counter.reps, 0);
   assert.match(result.rejection, /fast/i);
@@ -77,43 +81,89 @@ test('a rep faster than the minimum duration is rejected', () => {
 
 test('an arm swiped across the camera in one frame banks nothing', () => {
   const counter = new PushUpCounter(standard);
-  const topDone = hold(counter, 175, 0);
+  const top = holdFor(counter, 175, 0, SETTLE);
 
-  frame(counter, 60, topDone);
-  const result = frame(counter, 175, topDone + FRAME_MS);
+  frame(counter, 60, top);
+  const result = frame(counter, 175, top + FRAME_MS);
 
   assert.equal(counter.reps, 0);
   assert.ok(result.rejection);
 });
 
-test('sagging hips void the rep', () => {
+test('sustained hip sag voids the rep', () => {
   const counter = new PushUpCounter(standard);
-  const topDone = hold(counter, 175, 0);
-  hold(counter, 70, topDone, { body: 120 });
-  const result = frame(counter, 175, topDone + 900, { body: 120 });
+  const top = holdFor(counter, 175, 0, SETTLE);
+  holdFor(counter, 70, top, 1200, { body: 110 });
+  const result = frame(counter, 175, top + 1400, { body: 110 });
 
   assert.equal(counter.reps, 0);
-  assert.match(result.rejection, /straight/i);
+  assert.match(result.rejection, /hips/i);
+});
+
+test('a few noisy frames do not void an otherwise clean rep', () => {
+  const counter = new PushUpCounter(standard);
+  const top = holdFor(counter, 175, 0, SETTLE);
+  let t = holdFor(counter, 70, top, 300);
+
+  // Three frames of hip jitter, ~100ms, far inside the 800ms grace. This is
+  // the shape of pose-model noise on a motionless subject, and latching on it
+  // was rejecting real push-ups.
+  for (let i = 0; i < 3; i += 1) {
+    frame(counter, 70, t, { body: 100 });
+    t += FRAME_MS;
+  }
+
+  holdFor(counter, 70, t, 200);
+  frame(counter, 175, top + 900);
+
+  assert.equal(counter.reps, 1);
+});
+
+test('form is not judged when the legs are not confidently visible', () => {
+  const counter = new PushUpCounter(standard);
+  const opts = { body: 90, bodyConfidence: 0.1 };
+
+  const top = holdFor(counter, 175, 0, SETTLE, opts);
+  holdFor(counter, 70, top, 600, opts);
+  const result = frame(counter, 175, top + 900, opts);
+
+  assert.equal(counter.reps, 1);
+  assert.equal(result.formJudged, false);
+  assert.equal(result.formOk, true); // reported fine because it was not assessed
 });
 
 test('form broken while resting at the top does not void the next rep', () => {
   const counter = new PushUpCounter(standard);
-  let t = hold(counter, 175, 0);
-  t = hold(counter, 175, t, { body: 100 });
-  t = hold(counter, 70, t);
-  frame(counter, 175, t + 900);
+  let t = holdFor(counter, 175, 0, SETTLE);
+  t = holdFor(counter, 175, t, 1500, { body: 100 });
+  const descentAt = t;
+  holdFor(counter, 70, descentAt, 500);
+  frame(counter, 175, descentAt + 900);
+
+  assert.equal(counter.reps, 1);
+});
+
+test('a tracking gap does not burn the form budget', () => {
+  const counter = new PushUpCounter(standard);
+  const top = holdFor(counter, 175, 0, SETTLE);
+  holdFor(counter, 70, top, 300);
+
+  // Ten seconds away, then a bad-form frame on return. Charging the whole gap
+  // would void a rep for time in which nobody was being tracked.
+  frame(counter, 70, top + 10_000, { body: 100 });
+  frame(counter, 175, top + 10_100);
 
   assert.equal(counter.reps, 1);
 });
 
 test('losing the subject preserves the count but voids the rep in flight', () => {
   const counter = new PushUpCounter(standard);
-  let t = hold(counter, 175, 0);
-  hold(counter, 70, t);
+  let t = holdFor(counter, 175, 0, SETTLE);
+  holdFor(counter, 70, t, 500);
   frame(counter, 175, t + 900);
   assert.equal(counter.reps, 1);
 
-  t = hold(counter, 70, t + 933);
+  t = holdFor(counter, 70, t + 933, SETTLE);
   const lost = frame(counter, 70, t, { confidence: 0.1 });
   assert.equal(counter.reps, 1);
   assert.equal(lost.phase, PHASE.SEARCHING);
@@ -125,17 +175,16 @@ test('losing the subject preserves the count but voids the rep in flight', () =>
 
 test('a null pose is treated as a tracking loss', () => {
   const counter = new PushUpCounter(standard);
-  hold(counter, 175, 0);
-  const result = counter.onFrame(null, 500);
-  assert.equal(result.phase, PHASE.SEARCHING);
+  holdFor(counter, 175, 0, SETTLE);
+  assert.equal(counter.onFrame(null, 500).phase, PHASE.SEARCHING);
 });
 
 test('the same shallow rep counts on casual and not on standard', () => {
   const run = (profile) => {
     const counter = new PushUpCounter(profile);
-    const topDone = hold(counter, 175, 0);
-    hold(counter, 100, topDone);
-    frame(counter, 175, topDone + 1200);
+    const top = holdFor(counter, 175, 0, SETTLE);
+    holdFor(counter, 100, top, 600);
+    frame(counter, 175, top + 1200);
     return counter.reps;
   };
 
@@ -146,9 +195,9 @@ test('the same shallow rep counts on casual and not on standard', () => {
 test('brutal demands a slower rep than standard accepts', () => {
   const run = (profile) => {
     const counter = new PushUpCounter(profile);
-    const topDone = hold(counter, 178, 0);
-    hold(counter, 65, topDone);
-    frame(counter, 178, topDone + 700);
+    const top = holdFor(counter, 178, 0, SETTLE);
+    holdFor(counter, 65, top, 400);
+    frame(counter, 178, top + 700);
     return counter.reps;
   };
 
@@ -156,13 +205,26 @@ test('brutal demands a slower rep than standard accepts', () => {
   assert.equal(run(brutal), 0);
 });
 
+test('casual tolerates a body line that brutal rejects', () => {
+  const run = (profile) => {
+    const counter = new PushUpCounter(profile);
+    const top = holdFor(counter, 175, 0, SETTLE, { body: 140 });
+    holdFor(counter, 60, top, 1200, { body: 140 });
+    frame(counter, 175, top + 1400, { body: 140 });
+    return counter.reps;
+  };
+
+  assert.equal(run(casual), 1); // 140 clears casual's 100
+  assert.equal(run(brutal), 0); // and misses brutal's 155
+});
+
 test('changing strictness mid-session abandons the rep in progress', () => {
   const counter = new PushUpCounter(standard);
-  const topDone = hold(counter, 175, 0);
-  hold(counter, 70, topDone);
+  const top = holdFor(counter, 175, 0, SETTLE);
+  holdFor(counter, 70, top, 500);
 
   counter.setProfile(brutal);
-  const result = frame(counter, 175, topDone + 2000);
+  const result = frame(counter, 175, top + 2000);
 
   assert.equal(counter.reps, 0);
   assert.equal(result.phase, PHASE.TOP);
@@ -170,9 +232,9 @@ test('changing strictness mid-session abandons the rep in progress', () => {
 
 test('reset clears the count and the state machine', () => {
   const counter = new PushUpCounter(standard);
-  const topDone = hold(counter, 175, 0);
-  hold(counter, 70, topDone);
-  frame(counter, 175, topDone + 900);
+  const top = holdFor(counter, 175, 0, SETTLE);
+  holdFor(counter, 70, top, 500);
+  frame(counter, 175, top + 900);
   assert.equal(counter.reps, 1);
 
   counter.reset();

@@ -5,7 +5,7 @@ enum class RepPhase { SEARCHING, TOP, BOTTOM }
 
 /** Persistent on-screen coaching line. */
 enum class Coaching(val message: String) {
-    FINDING_YOU("Get your whole body in frame"),
+    FINDING_YOU("Get your upper body in frame"),
     GET_SET("Arms straight — get set at the top"),
     GO_LOWER("Lower — bend those elbows"),
     PUSH_UP("Push all the way back up"),
@@ -20,6 +20,11 @@ data class CounterUpdate(
     val depth: Float,
     /** False while the body line is outside tolerance. Drives the overlay colour. */
     val formOk: Boolean,
+    /**
+     * False when the torso landmarks are too uncertain to judge, e.g. legs out
+     * of frame. The UI uses this to avoid implying the back was inspected.
+     */
+    val formJudged: Boolean,
     /** True only on the frame a rep landed, so the caller can buzz once. */
     val repJustCounted: Boolean,
     /** Why the last attempt did not count, held briefly so the UI can show it. */
@@ -33,10 +38,9 @@ data class CounterUpdate(
  * supplies `nowMillis`, which makes every rule in here exercisable from a unit
  * test with a synthetic descent.
  *
- * A rep is the round trip TOP -> BOTTOM -> TOP, and it only banks a minute if
- * it clears all three gates for the active [StrictnessProfile]: it reached the
- * required depth, it took at least the minimum duration, and the body line
- * never broke tolerance at any point during the movement.
+ * A rep is the round trip TOP -> BOTTOM -> TOP, and it banks a minute if it
+ * reached the required depth, took at least the minimum duration, and did not
+ * spend longer than the level's grace outside the body-line tolerance.
  */
 class PushUpCounter(private var profile: StrictnessProfile) {
 
@@ -45,7 +49,18 @@ class PushUpCounter(private var profile: StrictnessProfile) {
 
     private var phase: RepPhase = RepPhase.SEARCHING
     private var descentStartedAt: Long = NOT_DESCENDING
-    private var formBrokenThisRep = false
+
+    /**
+     * Time spent outside body-line tolerance during the current rep.
+     *
+     * Accumulated rather than latched as a boolean. A single frame of ML Kit
+     * hip jitter is not bad form, and latching on it threw away clean reps -
+     * the symptom being "straighten your back" shouted at a perfectly straight
+     * back. Genuine sag persists across many frames and still trips this.
+     */
+    private var formBadMillis: Long = 0L
+    private var lastFrameAt: Long = NOT_DESCENDING
+
     private var smoothedElbow: Float? = null
     private var smoothedBody: Float? = null
 
@@ -58,14 +73,15 @@ class PushUpCounter(private var profile: StrictnessProfile) {
         profile = next
         phase = RepPhase.SEARCHING
         descentStartedAt = NOT_DESCENDING
-        formBrokenThisRep = false
+        formBadMillis = 0L
     }
 
     fun reset() {
         reps = 0
         phase = RepPhase.SEARCHING
         descentStartedAt = NOT_DESCENDING
-        formBrokenThisRep = false
+        formBadMillis = 0L
+        lastFrameAt = NOT_DESCENDING
         smoothedElbow = null
         smoothedBody = null
         rejectionMessage = null
@@ -76,22 +92,43 @@ class PushUpCounter(private var profile: StrictnessProfile) {
      * Feeds one frame. Pass null [metrics] when no usable skeleton was found.
      */
     fun onFrame(metrics: PoseMetrics?, nowMillis: Long): CounterUpdate {
+        val frameDelta = frameDelta(nowMillis)
+        lastFrameAt = nowMillis
+
         if (metrics == null || metrics.confidence < profile.minConfidence) {
             // Losing the subject must not wipe the rep count — people drop out
             // of frame between sets — but the in-flight rep is void, since we
             // cannot vouch for what happened while we could not see them.
             phase = RepPhase.SEARCHING
             descentStartedAt = NOT_DESCENDING
+            formBadMillis = 0L
             smoothedElbow = null
             smoothedBody = null
-            return update(Coaching.FINDING_YOU, depth = 0f, formOk = true, counted = false, now = nowMillis)
+            return update(
+                coaching = Coaching.FINDING_YOU,
+                depth = 0f,
+                formOk = true,
+                formJudged = false,
+                counted = false,
+                now = nowMillis,
+            )
         }
 
         val elbow = Geometry.smooth(smoothedElbow, metrics.elbowAngle).also { smoothedElbow = it }
-        val body = Geometry.smooth(smoothedBody, metrics.bodyLineAngle).also { smoothedBody = it }
 
-        val formOk = body >= profile.minBodyLineAngle
-        if (!formOk && phase != RepPhase.SEARCHING) formBrokenThisRep = true
+        // Only judge the back when the torso landmarks are actually trustworthy.
+        // A guessed knee produces a nonsense body line, and failing reps on it
+        // is worse than not checking at all.
+        val formJudged = metrics.bodyConfidence >= profile.minConfidence
+        val body = if (formJudged) {
+            Geometry.smooth(smoothedBody, metrics.bodyLineAngle).also { smoothedBody = it }
+        } else {
+            smoothedBody = null
+            null
+        }
+
+        val formOk = body == null || body >= profile.minBodyLineAngle
+        if (!formOk && phase != RepPhase.SEARCHING) formBadMillis += frameDelta
 
         val depth = ((profile.upElbowAngle - elbow) /
             (profile.upElbowAngle - profile.downElbowAngle)).coerceIn(0f, 1f)
@@ -106,7 +143,7 @@ class PushUpCounter(private var profile: StrictnessProfile) {
                 if (elbow >= profile.upElbowAngle) {
                     phase = RepPhase.TOP
                     descentStartedAt = NOT_DESCENDING
-                    formBrokenThisRep = false
+                    formBadMillis = 0L
                 }
                 coaching = Coaching.GET_SET
             }
@@ -124,7 +161,7 @@ class PushUpCounter(private var profile: StrictnessProfile) {
                     // measurable duration and bank a free minute.
                     if (descentStartedAt == NOT_DESCENDING) {
                         descentStartedAt = nowMillis
-                        formBrokenThisRep = !formOk
+                        formBadMillis = 0L
                     }
                     if (elbow <= profile.downElbowAngle) phase = RepPhase.BOTTOM
                 } else {
@@ -147,8 +184,8 @@ class PushUpCounter(private var profile: StrictnessProfile) {
                         duration < profile.minRepMillis ->
                             reject("Too fast — control the rep", nowMillis)
 
-                        formBrokenThisRep ->
-                            reject("Body wasn't straight — rep not counted", nowMillis)
+                        formBadMillis > profile.formGraceMillis ->
+                            reject("Hips dropped — rep not counted", nowMillis)
 
                         else -> {
                             reps++
@@ -158,14 +195,25 @@ class PushUpCounter(private var profile: StrictnessProfile) {
 
                     phase = RepPhase.TOP
                     descentStartedAt = NOT_DESCENDING
-                    formBrokenThisRep = false
+                    formBadMillis = 0L
                 }
                 coaching = if (!formOk) Coaching.STRAIGHTEN_BODY else Coaching.PUSH_UP
             }
         }
 
-        return update(coaching, depth, formOk, counted, nowMillis)
+        return update(coaching, depth, formOk, formJudged, counted, nowMillis)
     }
+
+    /**
+     * Milliseconds since the previous frame, clamped.
+     *
+     * The clamp matters: after a pause or a tracking gap the raw delta can be
+     * seconds long, and adding that to the form budget would void the next rep
+     * for something that happened while nobody was even in frame.
+     */
+    private fun frameDelta(now: Long): Long =
+        if (lastFrameAt == NOT_DESCENDING) 0L
+        else (now - lastFrameAt).coerceIn(0L, MAX_FRAME_DELTA_MILLIS)
 
     private fun reject(message: String, now: Long) {
         rejectionMessage = message
@@ -176,6 +224,7 @@ class PushUpCounter(private var profile: StrictnessProfile) {
         coaching: Coaching,
         depth: Float,
         formOk: Boolean,
+        formJudged: Boolean,
         counted: Boolean,
         now: Long,
     ) = CounterUpdate(
@@ -184,6 +233,7 @@ class PushUpCounter(private var profile: StrictnessProfile) {
         coaching = coaching,
         depth = depth,
         formOk = formOk,
+        formJudged = formJudged,
         repJustCounted = counted,
         rejection = rejectionMessage.takeIf { now < rejectionExpiresAt },
     )
@@ -191,5 +241,6 @@ class PushUpCounter(private var profile: StrictnessProfile) {
     private companion object {
         const val NOT_DESCENDING = -1L
         const val REJECTION_HOLD_MILLIS = 1_800L
+        const val MAX_FRAME_DELTA_MILLIS = 200L
     }
 }

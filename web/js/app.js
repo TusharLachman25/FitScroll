@@ -176,8 +176,14 @@ let lastRepCount = 0;
 async function startWorkout() {
   counter = new PushUpCounter(profileFor(store.settings().strictness));
   lastRepCount = 0;
-  updateHud({ reps: 0, depth: 0, formOk: true, coaching: COACHING.FINDING_YOU, rejection: null });
-  $('strictness-pill').textContent = profileFor(store.settings().strictness).label.toUpperCase();
+  updateHud({
+    reps: 0,
+    depth: 0,
+    formOk: true,
+    formJudged: true,
+    coaching: COACHING.FINDING_YOU,
+    rejection: null,
+  });
 
   const video = $('camera');
   video.classList.toggle('mirrored', useFrontCamera);
@@ -242,6 +248,14 @@ function onPoseResult({ landmarks, metrics }) {
 function updateHud(update) {
   $('rep-value').textContent = String(update.reps);
   $('rep-label').textContent = update.reps === 1 ? 'rep' : 'reps';
+
+  // Saying so is the difference between "this level is oddly lenient" and
+  // knowing the legs are out of shot, which is fixable by moving the phone.
+  const profile = profileFor(store.settings().strictness);
+  $('strictness-pill').textContent =
+    update.formJudged === false
+      ? `${profile.label.toUpperCase()} · BACK NOT CHECKED`
+      : profile.label.toUpperCase();
 
   const ring = $('ring-progress');
   ring.style.strokeDashoffset = String(RING_CIRCUMFERENCE * (1 - update.depth));
@@ -377,7 +391,14 @@ $('bank-set').addEventListener('click', () => {
 $('discard-set').addEventListener('click', () => {
   counter.reset();
   lastRepCount = 0;
-  updateHud({ reps: 0, depth: 0, formOk: true, coaching: COACHING.GET_SET, rejection: null });
+  updateHud({
+    reps: 0,
+    depth: 0,
+    formOk: true,
+    formJudged: true,
+    coaching: COACHING.GET_SET,
+    rejection: null,
+  });
 });
 
 $('cap-slider').addEventListener('input', (event) => {

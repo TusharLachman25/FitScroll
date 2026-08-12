@@ -66,14 +66,16 @@ export function metricsFrom(landmarks) {
     const points = [shoulder, elbow, wrist, hip, knee].map((i) => landmarks[i]);
     if (points.some((p) => !p)) return null;
 
-    const confidence = Math.min(
-      ...points.map((p) => (typeof p.visibility === 'number' ? p.visibility : 1)),
-    );
+    const seen = (p) => (typeof p.visibility === 'number' ? p.visibility : 1);
 
     return {
       elbowAngle: angleAt(points[0], points[1], points[2]),
       bodyLineAngle: angleAt(points[0], points[3], points[4]),
-      confidence,
+      // Counting only needs the arm chain. Folding the knee in here would stop
+      // rep counting entirely for anyone whose legs sit outside the frame,
+      // which is a very ordinary way to prop a phone.
+      confidence: Math.min(seen(points[0]), seen(points[1]), seen(points[2])),
+      bodyConfidence: Math.min(seen(points[0]), seen(points[3]), seen(points[4])),
     };
   };
 
@@ -98,13 +100,22 @@ export function metricsFrom(landmarks) {
   const weight = left.confidence + right.confidence;
   if (weight <= 0) return left;
 
+  const bodyWeight = left.bodyConfidence + right.bodyConfidence;
+
   return {
     elbowAngle: (left.elbowAngle * left.confidence + right.elbowAngle * right.confidence) / weight,
+    // Blended by torso confidence rather than arm confidence, so a clearly
+    // visible arm cannot lend authority to a guessed knee on the same side.
     bodyLineAngle:
-      (left.bodyLineAngle * left.confidence + right.bodyLineAngle * right.confidence) / weight,
+      bodyWeight <= 0
+        ? left.bodyLineAngle
+        : (left.bodyLineAngle * left.bodyConfidence +
+            right.bodyLineAngle * right.bodyConfidence) /
+          bodyWeight,
     // The clearer side vouches for the blend; averaging would let an occluded
     // limb suppress a perfectly good reading.
     confidence: Math.max(left.confidence, right.confidence),
+    bodyConfidence: Math.max(left.bodyConfidence, right.bodyConfidence),
   };
 }
 

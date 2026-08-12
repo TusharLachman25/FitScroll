@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
+import com.fitscroll.app.MainActivity
 import com.fitscroll.app.data.BankRepository
 import com.fitscroll.app.data.Settings
 import com.fitscroll.app.data.SettingsRepository
@@ -17,7 +18,7 @@ import com.fitscroll.app.data.SettingsRepository
  * Watches which app is in front and enforces the bank against it.
  *
  * This runs on window-state changes rather than by polling, so the block lands
- * on the frame Instagram appears instead of up to a second later. It also does
+ * on the frame the app appears instead of up to a second later. It also does
  * the thing that actually matters: while a blocked app is on screen the balance
  * drains once a second, and the lock arrives mid-scroll the moment it empties —
  * not merely at the next launch.
@@ -30,13 +31,13 @@ class FitScrollAccessibilityService : AccessibilityService() {
 
     private lateinit var bank: BankRepository
     private lateinit var settings: SettingsRepository
+    private lateinit var lockOverlay: LockOverlay
 
     private val handler = Handler(Looper.getMainLooper())
 
     /** The blocked package currently being charged for, if any. */
     private var drainingPackage: String? = null
     private var warningShown = false
-    private var lastLockAt = 0L
 
     /**
      * Turning the screen off leaves the foreground app unchanged, so no window
@@ -52,6 +53,7 @@ class FitScrollAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         bank = BankRepository.get(this)
         settings = SettingsRepository.get(this)
+        lockOverlay = LockOverlay(this)
         registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
     }
 
@@ -71,26 +73,46 @@ class FitScrollAccessibilityService : AccessibilityService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         stopDrain()
+        // Leaving a window behind when the service is switched off would cover
+        // the whole phone with no way to reach the buttons.
+        lockOverlay.hide()
         runCatching { unregisterReceiver(screenReceiver) }
         return super.onUnbind(intent)
     }
 
+    override fun onDestroy() {
+        lockOverlay.hide()
+        super.onDestroy()
+    }
+
     // ------------------------------------------------------------ decisions
 
-    private fun onForegroundApp(packageName: String) {
-        if (packageName !in settings.current.blockedPackages) {
+    private fun onForegroundApp(foreground: String) {
+        if (foreground == packageName) {
+            // Our own UI, most likely the workout screen the lock just sent
+            // them to. Nothing to charge and nothing to cover.
+            lockOverlay.hide()
             stopDrain()
+            return
+        }
+
+        if (foreground !in settings.current.blockedPackages) {
+            stopDrain()
+            // The overlay is deliberately not dismissed here. Locking ejects to
+            // the launcher first, which arrives as exactly this case, and
+            // hiding on it would tear the lock down the instant it appeared.
             return
         }
 
         val remaining = bank.balanceSeconds()
         if (remaining <= 0) {
             stopDrain()
-            lock(packageName)
+            lock(foreground)
             return
         }
 
-        startDrain(packageName, remaining)
+        lockOverlay.hide()
+        startDrain(foreground, remaining)
     }
 
     private fun startDrain(packageName: String, remainingSeconds: Int) {
@@ -140,33 +162,43 @@ class FitScrollAccessibilityService : AccessibilityService() {
                 remaining <= Settings.WARN_AT_SECONDS
             ) {
                 warningShown = true
-                toast("${remaining}s of Instagram left — bank more or wrap up")
+                toast("${remaining}s left — bank more or wrap up")
             }
 
             handler.postDelayed(this, TICK_MILLIS)
         }
     }
 
+    /**
+     * Ejects from the blocked app and raises the lock screen over the launcher.
+     *
+     * Guarded on the overlay already being up rather than on elapsed time. The
+     * previous time-based debounce also suppressed a deliberate second attempt
+     * a moment later, which let the blocked app straight through on the retry.
+     */
     private fun lock(blockedPackage: String) {
-        val now = System.currentTimeMillis()
-        if (now - lastLockAt < LOCK_DEBOUNCE_MILLIS) return
-        lastLockAt = now
+        if (lockOverlay.isShowing) return
 
-        // Home first, then the lock screen. performGlobalAction always works,
-        // whereas the activity launch depends on the overlay permission being
-        // granted — so even a half-configured install still ejects the user
-        // from the blocked app rather than silently doing nothing.
+        // Home first, so the lock covers the launcher rather than a feed that
+        // is still running, and still playing audio, underneath it.
         performGlobalAction(GLOBAL_ACTION_HOME)
 
+        lockOverlay.show(
+            appLabel = AppInventory.labelFor(this, blockedPackage),
+            balanceLabel = formatRemaining(bank.balanceSeconds()),
+            onEarn = ::openWorkout,
+            onDismiss = { },
+        )
+    }
+
+    private fun openWorkout() {
         runCatching {
             startActivity(
-                Intent(this, LockActivity::class.java)
+                Intent(this, MainActivity::class.java)
                     .addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_CLEAR_TASK or
-                            Intent.FLAG_ACTIVITY_NO_ANIMATION,
+                        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK,
                     )
-                    .putExtra(LockActivity.EXTRA_BLOCKED_PACKAGE, blockedPackage),
+                    .putExtra(MainActivity.EXTRA_START_WORKOUT, true),
             )
         }
     }
@@ -177,15 +209,12 @@ class FitScrollAccessibilityService : AccessibilityService() {
 
     private fun formatRemaining(seconds: Int): String {
         val minutes = seconds / 60
-        return if (minutes >= 1) "$minutes min" else "${seconds}s"
+        return if (minutes >= 1) "${minutes}m" else "${seconds}s"
     }
 
     private companion object {
         const val TICK_MILLIS = 1_000L
         const val TICK_SECONDS = 1
-
-        /** Stops a re-entrant window event from stacking lock screens. */
-        const val LOCK_DEBOUNCE_MILLIS = 1_500L
 
         val TRANSIENT_SYSTEM_PACKAGES = setOf(
             "com.android.systemui",

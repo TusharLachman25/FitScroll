@@ -4,9 +4,10 @@
     <uses-permission android:name="android.permission.CAMERA" />
 
     <!--
-      Android 10+ refuses background activity launches unless the app can draw
-      overlays, and raising the lock screen over Instagram is exactly that.
-      Without it the block degrades to a bare press of the home button.
+      Not needed for blocking. The lock screen is an accessibility overlay,
+      which the service is granted directly. This is only what lets the lock's
+      "earn minutes" button open the camera for you, since Android 10+ refuses
+      background activity launches without it.
     -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
@@ -47,20 +48,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!--
-          excludeFromRecents keeps the lock out of the recents carousel, where
-          it would otherwise sit as a stale card. noHistory tears it down once
-          it is left, so it cannot ambush the next launch.
-        -->
-        <activity
-            android:name=".block.LockActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:noHistory="true"
-            android:taskAffinity=".lock"
-            android:theme="@style/Theme.FitScroll.Lock" />
 
         <service
             android:name=".block.FitScrollAccessibilityService"

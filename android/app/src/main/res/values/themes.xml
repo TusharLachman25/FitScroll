@@ -8,13 +8,4 @@
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 
-    <!-- The lock screen must cover the blocked app completely and must not
-         animate in from the side like a normal activity, or the transition
-         reveals a slice of the app underneath. -->
-    <style name="Theme.FitScroll.Lock" parent="Theme.FitScroll">
-        <item name="android:windowAnimationStyle">@null</item>
-        <item name="android:windowIsTranslucent">false</item>
-        <item name="android:windowNoTitle">true</item>
-    </style>
-
 </resources>

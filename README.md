@@ -31,12 +31,16 @@ Grab an APK from the [latest CI run](../../actions/workflows/ci.yml) (artifact `
 
 Transfer to your phone and open it. You'll need to allow installing from unknown sources; FitScroll is sideloaded, not on Play.
 
-### Then grant two permissions
+### Then grant the accessibility service
 
-Android deliberately refuses to let an app grant either of these to itself, so both are manual. FitScroll shows a banner on the home screen until both are on.
+**Required.** Settings → Accessibility → FitScroll → On. This is how FitScroll knows which app is in front. It's declared `canRetrieveWindowContent="false"`, so it receives package names and *cannot* read the contents of any screen.
 
-1. **Accessibility service** — Settings → Accessibility → FitScroll → On. This is how it knows which app is in front. It's declared `canRetrieveWindowContent="false"`, so it receives package names and *cannot* read the contents of any screen.
-2. **Display over other apps** — Settings → Apps → Special access → Display over other apps → FitScroll. Android 10+ blocks background activity launches without this, and raising a lock screen over Instagram is exactly that. Without it, blocking degrades to pressing the home button.
+Two things get in the way on a sideloaded build, both by design on Android's part:
+
+- **Play Protect blocks the install.** Any app that can see the foreground app trips this. Play Store → profile → Play Protect → ⚙ → turn off scanning, install, turn it back on. (Installing over ADB skips this entirely.)
+- **"Controlled by restricted setting."** Android 13+ won't let a sideloaded app enable Accessibility until you unlock it: Settings → Apps → FitScroll → ⋮ → **Allow restricted settings**. (Also not needed if you installed over ADB.)
+
+**Optional: Display over other apps.** Settings → Apps → Special access → Display over other apps → FitScroll. Blocking works without it — the lock screen is an *accessibility overlay*, which the service is granted directly. This permission only lets the lock screen's button jump you straight to the camera instead of you opening FitScroll yourself.
 
 ---
 
@@ -79,15 +83,21 @@ The PWA deploys to GitHub Pages automatically **once this repo is public** — P
 
 Settings has a 1–5 dial. Each level tightens four things at once, because loosening only depth produces a counter that pays a fast sloppy half-rep the same as a slow clean one.
 
-| Level | | Elbow depth | Lockout | Body line | Min rep time |
-|---|---|---|---|---|---|
-| 1 | Casual | 115° | 145° | 115° | 0.35s |
-| 2 | Relaxed | 105° | 150° | 138° | 0.45s |
-| 3 | Standard | 90° | 156° | 150° | 0.60s |
-| 4 | Strict | 80° | 162° | 158° | 0.75s |
-| 5 | Brutal | 72° | 168° | 165° | 0.90s |
+| Level | | Elbow depth | Lockout | Body line | Sag allowance | Min rep time |
+|---|---|---|---|---|---|---|
+| 1 | Casual | 115° | 145° | 100° | 1.5s | 0.35s |
+| 2 | Relaxed | 105° | 150° | 118° | 1.1s | 0.45s |
+| 3 | Standard | 90° | 156° | 132° | 0.8s | 0.60s |
+| 4 | Strict | 80° | 162° | 144° | 0.5s | 0.75s |
+| 5 | Brutal | 72° | 168° | 155° | 0.3s | 0.90s |
 
 The workout screen draws the tracked skeleton live: arms brighten as you approach the required depth, and the plank line turns red the moment your hips leave tolerance. That's there so a rejected rep reads as feedback rather than as a broken app.
+
+**Why the body-line numbers look lenient.** This is a 2D estimate from one camera. Unless the lens sits exactly perpendicular to you, perspective foreshortens your torso and a genuinely straight back measures well under 180°. Thresholds that are correct in geometry reject real push-ups at real phone placements.
+
+**Sag allowance** is how long within a rep you may be outside tolerance before it's voided. It exists because the pose model jitters by a few degrees on a motionless subject, and judging frame by frame threw away clean reps over a single noisy sample. Real sag lasts; noise doesn't.
+
+If your legs are outside the frame the model *guesses* your knee position, so FitScroll declines to judge your back at all rather than failing you on a guess. The workout screen says **"back not checked"** when that happens — move the phone back if you want the full check.
 
 ---
 
@@ -111,7 +121,7 @@ docs/      Setup guides, including the iOS Shortcuts automation
 
 ## Tests
 
-66 tests, no device required. The bank and the rep counter are pure functions taking an explicit `now`, so every rule — expiry boundaries, oldest-first spending, cap overflow, and each anti-cheat gate — is pinned down on both platforms.
+74 tests, no device required. The bank and the rep counter are pure functions taking an explicit `now`, so every rule — expiry boundaries, oldest-first spending, cap overflow, each anti-cheat gate, and the noise tolerance that stops clean reps being thrown away — is pinned down on both platforms.
 
 ## License
 

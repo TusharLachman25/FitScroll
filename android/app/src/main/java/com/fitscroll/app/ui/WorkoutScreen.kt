@@ -145,7 +145,14 @@ fun WorkoutScreen(
         )
 
         WorkoutTopBar(
-            strictnessLabel = state.strictness.label,
+            // Saying so is the difference between "this level is oddly lenient"
+            // and knowing the legs are out of shot, which is fixable by moving
+            // the phone.
+            strictnessLabel = if (state.formJudged || !state.tracking) {
+                state.strictness.label
+            } else {
+                "${state.strictness.label} · back not checked"
+            },
             onBack = onBack,
             onFlip = viewModel::flipCamera,
             modifier = Modifier.align(Alignment.TopCenter),
