@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FitScroll</string>
+
+    <string name="accessibility_service_summary">Locks your chosen apps when your banked minutes run out</string>
+
+    <string name="accessibility_service_description">FitScroll needs this to tell which app is on screen, so it can count down your banked minutes while you use a blocked app and lock it the moment they run out.\n\nIt only reads the name of the app in front. It cannot read the contents of any screen, and nothing ever leaves your phone.</string>
 </resources>

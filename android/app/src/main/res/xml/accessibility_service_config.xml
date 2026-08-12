@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  canRetrieveWindowContent is false on purpose. FitScroll only needs the package
+  name of whatever comes to the front, which arrives on the event itself, so it
+  never requests the ability to read the contents of any screen.
+
+  notificationTimeout is 0 so no window change is coalesced away - the whole
+  point is to react on the frame a blocked app appears.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="false"
+    android:description="@string/accessibility_service_description"
+    android:notificationTimeout="0"
+    android:summary="@string/accessibility_service_summary" />

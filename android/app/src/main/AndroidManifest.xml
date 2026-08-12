@@ -3,9 +3,28 @@
 
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!--
+      Android 10+ refuses background activity launches unless the app can draw
+      overlays, and raising the lock screen over Instagram is exactly that.
+      Without it the block degrades to a bare press of the home button.
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <uses-feature
         android:name="android.hardware.camera"
         android:required="true" />
+
+    <!--
+      Scoped package visibility for the blocked-app picker. This resolves only
+      apps with a launcher entry, rather than claiming QUERY_ALL_PACKAGES over
+      everything installed.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:name=".FitScrollApp"
@@ -28,6 +47,33 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          excludeFromRecents keeps the lock out of the recents carousel, where
+          it would otherwise sit as a stale card. noHistory tears it down once
+          it is left, so it cannot ambush the next launch.
+        -->
+        <activity
+            android:name=".block.LockActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:noHistory="true"
+            android:taskAffinity=".lock"
+            android:theme="@style/Theme.FitScroll.Lock" />
+
+        <service
+            android:name=".block.FitScrollAccessibilityService"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
 
     </application>
 
