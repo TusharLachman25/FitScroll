@@ -17,6 +17,14 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // x86 and x86_64 only ever run on emulators. Excluding them here rather
+        // than only in `splits` matters, because the universal APK packages
+        // whatever survives this filter — without it the "safe fallback" build
+        // is 82MB, nearly half of it code no phone can execute.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {
@@ -35,6 +43,21 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             isMinifyEnabled = false
+        }
+    }
+
+    // ML Kit ships native inference libraries for four ABIs, and two of them
+    // (x86, x86_64) only ever run on emulators. Bundling all four made the
+    // sideloaded APK 82MB, more than half of it dead weight on any real phone.
+    //
+    // Splitting produces a small per-ABI APK plus a universal one as a
+    // fallback for anyone unsure what their device is.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = true
         }
     }
 
