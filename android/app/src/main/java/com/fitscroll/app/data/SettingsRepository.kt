@@ -14,7 +14,6 @@ data class Settings(
     val strictness: Int = DEFAULT_STRICTNESS,
     /** Whether to warn shortly before the balance runs out. */
     val warnBeforeLock: Boolean = true,
-    val onboardingComplete: Boolean = false,
 ) {
     companion object {
         const val INSTAGRAM_PACKAGE = "com.instagram.android"
@@ -66,8 +65,6 @@ class SettingsRepository private constructor(context: Context) {
 
     fun setWarnBeforeLock(enabled: Boolean) = update { it.copy(warnBeforeLock = enabled) }
 
-    fun setOnboardingComplete(complete: Boolean) = update { it.copy(onboardingComplete = complete) }
-
     private fun update(transform: (Settings) -> Settings) {
         val next = transform(_state.value)
         prefs.edit()
@@ -75,7 +72,6 @@ class SettingsRepository private constructor(context: Context) {
             .putInt(KEY_CAP_MINUTES, next.bankCapMinutes)
             .putInt(KEY_STRICTNESS, next.strictness)
             .putBoolean(KEY_WARN, next.warnBeforeLock)
-            .putBoolean(KEY_ONBOARDED, next.onboardingComplete)
             .apply()
         _state.value = next
     }
@@ -90,7 +86,6 @@ class SettingsRepository private constructor(context: Context) {
             bankCapMinutes = prefs.getInt(KEY_CAP_MINUTES, defaults.bankCapMinutes),
             strictness = prefs.getInt(KEY_STRICTNESS, defaults.strictness),
             warnBeforeLock = prefs.getBoolean(KEY_WARN, defaults.warnBeforeLock),
-            onboardingComplete = prefs.getBoolean(KEY_ONBOARDED, false),
         )
     }
 
@@ -100,7 +95,6 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_CAP_MINUTES = "bank_cap_minutes"
         private const val KEY_STRICTNESS = "strictness"
         private const val KEY_WARN = "warn_before_lock"
-        private const val KEY_ONBOARDED = "onboarding_complete"
 
         private val OWN_PACKAGE_PREFIXES = setOf(
             "com.fitscroll.app",
