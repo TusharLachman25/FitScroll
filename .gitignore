@@ -1,0 +1,32 @@
+# Android / Gradle
+*.iml
+.gradle/
+local.properties
+.idea/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+release/
+
+# Keystores - never commit signing material
+*.jks
+*.keystore
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node / PWA tooling
+node_modules/
+dist/
+.env
+.env.local
+
+# Logs
+*.log
