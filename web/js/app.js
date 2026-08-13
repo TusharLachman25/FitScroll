@@ -169,9 +169,35 @@ function renderSettings() {
 
 let tracker = null;
 let stream = null;
+let wakeLock = null;
 let counter = new PushUpCounter(profileFor(store.settings().strictness));
 let useFrontCamera = true;
 let lastRepCount = 0;
+
+/**
+ * Keeps the display awake during a set.
+ *
+ * Doing push-ups means not touching the phone, so the screen dims and sleeps
+ * mid-set and the camera stops seeing anything. Failures are ignored on
+ * purpose: the API is missing on older Safari and the request is rejected on a
+ * backgrounded page, and neither is a reason to interrupt a workout.
+ */
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator) || wakeLock) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener?.('release', () => {
+      wakeLock = null;
+    });
+  } catch {
+    wakeLock = null;
+  }
+}
+
+function releaseWakeLock() {
+  wakeLock?.release?.().catch?.(() => {});
+  wakeLock = null;
+}
 
 async function startWorkout() {
   counter = new PushUpCounter(profileFor(store.settings().strictness));
@@ -200,6 +226,7 @@ async function startWorkout() {
     video.srcObject = stream;
     await video.play();
     $('camera-error').classList.add('hidden');
+    acquireWakeLock();
   } catch (error) {
     showCameraError(
       error?.name === 'NotAllowedError'
@@ -223,6 +250,7 @@ function stopWorkout() {
   tracker = null;
   stream?.getTracks().forEach((track) => track.stop());
   stream = null;
+  releaseWakeLock();
   const video = $('camera');
   if (video) video.srcObject = null;
 }
@@ -423,6 +451,9 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   settleIfReturned();
   if (activeView === 'home') renderHome();
+  // The browser drops a screen wake lock whenever the page is hidden, and does
+  // not restore it, so mid-workout it has to be asked for again.
+  if (activeView === 'workout') acquireWakeLock();
 });
 
 // The balance falls as credits expire even with nobody touching the screen.

@@ -54,6 +54,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -98,6 +99,17 @@ fun WorkoutScreen(
 
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
+    // Doing push-ups means not touching the phone, so the display times out
+    // mid-set and the camera stops seeing anything. Held on the composition's
+    // own view rather than as a window flag, so it is scoped to this screen and
+    // released automatically on the way out — the home screen has no business
+    // keeping the display awake.
+    val view = LocalView.current
+    DisposableEffect(view) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
     }
 
     // One buzz per counted rep, so you can keep your head down and still know
