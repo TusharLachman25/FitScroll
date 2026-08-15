@@ -100,6 +100,15 @@ export const DEFAULTS = {
   capMinutes: 1440,
   strictness: 3,
   warnBeforeLock: true,
+  /**
+   * Whether to hand you straight back to the gated app when you can afford it.
+   *
+   * The iOS automation reopens FitScroll on every launch of the gated app, so
+   * without this it interrupts even when there is nothing to decide. On means
+   * the interruption is reserved for the moment it carries information: an
+   * empty bank.
+   */
+  autoReturn: true,
 };
 
 export const MIN_CAP_MINUTES = 15;

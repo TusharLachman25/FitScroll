@@ -178,6 +178,7 @@ function renderSettings() {
   $('account-email').textContent = sessionUser?.email ?? 'Signed in';
   $('sync-status').textContent = syncStatusLine();
 
+  $('auto-return').checked = settings.autoReturn !== false;
   $('target-scheme').value = settings.targetScheme || 'instagram://app';
   $('version-line').textContent =
     `FitScroll ${APP_VERSION} · running as a ${runtimeLabel()}. ` +
@@ -231,15 +232,72 @@ async function syncQuietly() {
   return result;
 }
 
+/**
+ * How long a glance at the balance stays on screen before handing you back.
+ * Long enough to read the number, short enough not to feel like a wall.
+ */
+const AUTO_RETURN_DELAY_MS = 900;
+
+/**
+ * A second auto-return inside this window means the Shortcuts automation is
+ * ping-ponging with us rather than the user genuinely reopening the app.
+ */
+const AUTO_RETURN_GUARD_MS = 25_000;
+
 async function enterApp() {
   // Settle before anything else: the automation reopens this page on every
   // Instagram launch, and that return is the only moment iOS gives us to
   // charge for the time spent away.
   settleIfReturned();
   show('home');
+
+  if (tryAutoReturn()) return;
+
   await pullSettings(store);
   await syncQuietly();
   renderHome();
+}
+
+/**
+ * Hands the user straight back when they can afford it.
+ *
+ * The automation fires on every launch of the gated app, so without this
+ * FitScroll interrupts even when there is nothing to decide — which is what it
+ * was doing: showing a balance, waiting for a tap, and getting in the way of
+ * screen time that had already been paid for. The interruption is now reserved
+ * for the case that carries information, which is an empty bank.
+ *
+ * Returns true when a return is under way and the caller should stop.
+ */
+function tryAutoReturn() {
+  if (!store.settings().autoReturn) return false;
+  if (store.balanceSeconds() <= 0) return false;
+
+  const now = Date.now();
+  // Going back to Instagram can itself retrigger the automation, which reopens
+  // this page. Bouncing again would be an endless loop, so a recent return
+  // means we stop and let the app be seen.
+  if (now - store.lastAutoReturnAt() < AUTO_RETURN_GUARD_MS) {
+    $('session-banner').classList.remove('hidden');
+    return false;
+  }
+
+  store.markAutoReturn(now);
+  store.startSession(now);
+  renderHome();
+
+  $('balance-note').textContent = 'Returning to your app — the clock is running.';
+  $('balance-note').classList.remove('urgent');
+
+  // Fire and forget: the events are already queued locally and will upload on
+  // the next open, so waiting on the network here would only delay the user.
+  syncQuietly();
+
+  setTimeout(() => {
+    window.location.href = store.settings().targetScheme || 'instagram://app';
+  }, AUTO_RETURN_DELAY_MS);
+
+  return true;
 }
 
 // ----------------------------------------------------------------- workout
@@ -523,6 +581,10 @@ $('cap-slider').addEventListener('change', () => {
 
 $('target-scheme').addEventListener('change', (event) => {
   store.saveSettings({ targetScheme: event.target.value.trim() });
+});
+
+$('auto-return').addEventListener('change', (event) => {
+  store.saveSettings({ autoReturn: event.target.checked });
 });
 
 $('clear-bank').addEventListener('click', () => {

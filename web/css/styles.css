@@ -314,6 +314,29 @@ body {
   color: var(--ink);
 }
 
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  cursor: pointer;
+}
+
+.toggle-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 15px;
+}
+
+.toggle-row input[type='checkbox'] {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  accent-color: var(--lime);
+}
+
 .strictness-label {
   margin: 14px 0 0;
   color: var(--lime);

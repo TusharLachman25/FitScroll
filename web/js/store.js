@@ -39,6 +39,7 @@ export class BankStore {
       stats: `${keyPrefix}.stats`,
       session: `${keyPrefix}.session`,
       clock: `${keyPrefix}.clock`,
+      autoReturn: `${keyPrefix}.autoReturnAt`,
       legacyCredits: `${keyPrefix}.credits`,
     };
     this.#migrateLegacyCredits();
@@ -288,6 +289,23 @@ export class BankStore {
 
   hasOpenSession() {
     return this.openSessionStartedAt() !== null;
+  }
+
+  /**
+   * When this device last handed the user straight back to the gated app.
+   *
+   * Used as a loop guard. FitScroll returning to Instagram can itself trip the
+   * Shortcuts automation, which reopens FitScroll, which would return again —
+   * a ping-pong with no exit. Seeing a recent auto-return means exactly that is
+   * happening, so the app stops and shows itself instead.
+   */
+  lastAutoReturnAt() {
+    const stored = this.#read(this.keys.autoReturn, 0);
+    return typeof stored === 'number' ? stored : 0;
+  }
+
+  markAutoReturn(now = Date.now()) {
+    this.#write(this.keys.autoReturn, now);
   }
 
   openSessionStartedAt() {
