@@ -2,7 +2,7 @@
   "name": "FitScroll",
   "short_name": "FitScroll",
   "description": "Earn your scroll. One push-up buys one minute of screen time.",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

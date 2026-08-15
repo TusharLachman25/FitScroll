@@ -59,7 +59,7 @@ To check it worked, open **Table Editor** — you should see `bank_events` and `
 2. Enable it, paste the Client ID and Client Secret, save.
 3. Go to **Authentication → URL Configuration** and set:
 
-   **Site URL**
+   **Site URL** — replace the default `http://localhost:3000`:
    ```
    https://tusharlachman25.github.io/FitScroll/
    ```
@@ -72,6 +72,8 @@ To check it worked, open **Table Editor** — you should see `bank_events` and `
    ```
 
 The last one is the Android app coming back from the browser after you approve.
+
+> **If sign-in lands on a `localhost` error page**, this is why. Supabase only honours a `redirect_to` it recognises and quietly falls back to the Site URL otherwise — so leaving Site URL at its `localhost` default turns any unrecognised redirect into a dead page. Both entries above matter: the bare directory is what the app sends, and the `/**` wildcard covers anything else under it.
 
 ---
 

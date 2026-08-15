@@ -46,10 +46,20 @@ export function onAuthChange(handler) {
 }
 
 export async function signInWithGoogle() {
-  // Returning to the exact page we left keeps the app in scope, which matters
-  // for the home-screen copy: a redirect to a different path would drop the
-  // user into a browser tab instead.
-  const redirectTo = window.location.href.split('#')[0];
+  // Always the directory, never the page.
+  //
+  // Safari opens this app at `.../FitScroll/` while the home-screen copy opens
+  // at `.../FitScroll/index.html`, and sending whichever one happened to be
+  // current meant two different redirect targets. Supabase only honours a
+  // redirect it recognises and silently falls back to the project's Site URL
+  // otherwise, so the installed app was being bounced to localhost while Safari
+  // worked fine.
+  //
+  // Normalising to the directory gives one URL to allowlist, keeps the redirect
+  // inside the manifest scope so the standalone app stays standalone, and does
+  // not hard-code the deployment path.
+  const redirectTo = new URL('.', window.location.href).href;
+
   return supabase.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo },
