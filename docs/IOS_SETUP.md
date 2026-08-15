@@ -60,6 +60,29 @@ This is what makes Instagram bounce you into FitScroll.
 
 Now every time you open Instagram, iOS immediately opens FitScroll on top.
 
+### Optional: a second automation, for accurate metering
+
+Skip this and everything still works — but read what it fixes before deciding.
+
+FitScroll cannot watch the clock while Instagram is in front. It stamps the time you left and settles the difference the next time it runs. That means it only knows *"you left at 4:07, you are back 33 minutes later"* — it has no idea what you did in between.
+
+Scroll for three minutes, spend half an hour in Messages, then open Instagram again, and you are billed **thirty-three minutes**. You lose thirty you never spent scrolling.
+
+A second automation stops the clock when you actually leave:
+
+1. Shortcuts → **Automation** → **+** → **Create Personal Automation** → **App**
+2. Choose **Instagram**
+3. This time tick **Is Closed** and untick **Is Opened**
+4. **Next** → **New Blank Automation** → **Open URLs**, and paste:
+   ```
+   https://tusharlachman25.github.io/FitScroll/?event=closed
+   ```
+5. **Next** → turn off **Ask Before Running** → **Done**
+
+The `?event=closed` marker is what tells FitScroll it was opened because you left rather than because you arrived, so it stops the clock instead of handing you back into Instagram.
+
+**The trade:** FitScroll now flashes up when you leave Instagram as well as when you open it. Some people find that more annoying than being over-billed; you are the one who has to live with it.
+
 ### Why not "Open App"?
 
 Because FitScroll will not be in that list, and no amount of scrolling will find it. A home-screen web app is a *web clip*, not an installed application — iOS does not register it in the app list that Shortcuts reads. Only real App Store apps appear there, which is precisely the thing you cannot ship without a developer account.

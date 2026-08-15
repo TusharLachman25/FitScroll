@@ -30,6 +30,28 @@ const RING_CIRCUMFERENCE = 326.7;
 const store = new BankStore();
 const $ = (id) => document.getElementById(id);
 
+/**
+ * Why this page was opened, as told by the Shortcuts automation that opened it.
+ *
+ * Without it, a session is charged for everything between two Instagram
+ * launches — scroll for three minutes, spend half an hour in Messages, open
+ * Instagram again, and the bank is billed thirty-three. A second automation on
+ * "Is Closed" pointing at `?event=closed` lets the clock stop when you actually
+ * leave, instead of when you next come back.
+ *
+ * Optional: with no such automation this is simply null and the app behaves as
+ * before.
+ */
+const launchReason = new URLSearchParams(window.location.search).get('event');
+
+if (launchReason) {
+  // Strip the marker so a refresh is not mistaken for a fresh trigger. The
+  // hash is preserved untouched — the auth client may still be reading it.
+  const clean = new URL(window.location.href);
+  clean.search = '';
+  history.replaceState({}, '', clean.href);
+}
+
 // --------------------------------------------------------------- formatting
 
 function formatMinutes(minutes) {
@@ -251,7 +273,9 @@ async function enterApp() {
   settleIfReturned();
   show('home');
 
-  if (tryAutoReturn()) return;
+  // Opened *because* the gated app closed: the clock has just been stopped, so
+  // sending the user back would drag them into the very app they left.
+  if (launchReason !== 'closed' && tryAutoReturn()) return;
 
   await pullSettings(store);
   await syncQuietly();
