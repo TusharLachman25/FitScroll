@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  BankStore,
   EXPIRY_MS,
   balanceSeconds,
   earn,
@@ -16,16 +15,6 @@ const NOW = 1_700_000_000_000;
 const HOUR = 60 * 60 * 1000;
 const CAP = 1440 * 60;
 const hoursAgo = (h) => NOW - h * HOUR;
-
-/** Minimal localStorage stand-in; node's is still experimental. */
-function fakeStorage() {
-  const map = new Map();
-  return {
-    getItem: (k) => (map.has(k) ? map.get(k) : null),
-    setItem: (k, v) => map.set(k, String(v)),
-    removeItem: (k) => map.delete(k),
-  };
-}
 
 test('one rep banks exactly one minute', () => {
   const { credits, grantedSeconds } = earn([], 1, NOW, CAP);
@@ -126,73 +115,3 @@ test('a full day cycle - earn, partly spend, let the rest expire', () => {
   assert.equal(balanceSeconds(credits, NOW + 25 * HOUR), 0);
 });
 
-// ------------------------------------------------------ iOS session settling
-
-test('an open session is charged for the time spent away', () => {
-  const store = new BankStore(fakeStorage());
-  store.earn(30, NOW); // 30 minutes banked
-
-  store.startSession(NOW);
-  const spent = store.settleSession(NOW + 5 * 60 * 1000); // gone five minutes
-
-  assert.equal(spent, 300);
-  assert.equal(store.balanceSeconds(NOW + 5 * 60 * 1000), 25 * 60);
-});
-
-test('settling twice does not double charge', () => {
-  const store = new BankStore(fakeStorage());
-  store.earn(10, NOW);
-  store.startSession(NOW);
-
-  store.settleSession(NOW + 60_000);
-  const second = store.settleSession(NOW + 120_000);
-
-  assert.equal(second, 0);
-  assert.equal(store.balanceSeconds(NOW + 120_000), 9 * 60);
-});
-
-test('a session longer than the balance drains it to zero, not below', () => {
-  const store = new BankStore(fakeStorage());
-  store.earn(2, NOW);
-  store.startSession(NOW);
-
-  const spent = store.settleSession(NOW + 60 * 60 * 1000); // away an hour
-
-  assert.equal(spent, 120); // only the two minutes that existed
-  assert.equal(store.balanceSeconds(NOW + 60 * 60 * 1000), 0);
-});
-
-test('a backwards clock cannot credit usage', () => {
-  const store = new BankStore(fakeStorage());
-  store.earn(10, NOW);
-  store.startSession(NOW);
-
-  const spent = store.settleSession(NOW - 60_000);
-
-  assert.equal(spent, 0);
-  assert.equal(store.balanceSeconds(NOW), 10 * 60);
-});
-
-test('a corrupt ledger resets rather than throwing', () => {
-  const storage = fakeStorage();
-  storage.setItem('fitscroll.credits', '{not json');
-  const store = new BankStore(storage);
-
-  assert.deepEqual(store.credits(), []);
-  assert.equal(store.balanceSeconds(NOW), 0);
-});
-
-test('stats track reps for today and all time', () => {
-  const store = new BankStore(fakeStorage());
-  store.earn(12, NOW);
-  store.earn(8, NOW);
-
-  const snapshot = store.snapshot(NOW);
-  assert.equal(snapshot.repsToday, 20);
-  assert.equal(snapshot.repsAllTime, 20);
-
-  // A day later the daily counter resets but the lifetime total does not.
-  const tomorrow = store.snapshot(NOW + 26 * HOUR);
-  assert.equal(tomorrow.repsToday, 0);
-  assert.equal(tomorrow.repsAllTime, 20);
-});

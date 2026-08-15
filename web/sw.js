@@ -11,7 +11,10 @@
  *    them on a gym wifi would make the camera unusable.
  */
 
-const VERSION = 'v1';
+// Bumping this evicts the previous shell cache. Required whenever the module
+// graph changes, or a returning visitor keeps being served an index.html that
+// imports files the new build no longer has.
+const VERSION = 'v2';
 const SHELL_CACHE = `fitscroll-shell-${VERSION}`;
 const MODEL_CACHE = `fitscroll-model-${VERSION}`;
 
@@ -21,6 +24,9 @@ const SHELL_ASSETS = [
   './css/styles.css',
   './js/app.js',
   './js/bank.js',
+  './js/ledger.js',
+  './js/store.js',
+  './js/config.js',
   './js/counter.js',
   './js/pose.js',
   './manifest.webmanifest',

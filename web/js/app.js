@@ -1,4 +1,5 @@
-import { BankStore, MAX_CAP_MINUTES } from './bank.js';
+import { MAX_CAP_MINUTES } from './bank.js';
+import { BankStore } from './store.js';
 import { COACHING, PushUpCounter, STRICTNESS, profileFor } from './counter.js';
 import { ARM_BONES, BODY_BONES, FRAME_BONES, DRAWN_LANDMARKS, PoseTracker } from './pose.js';
 
