@@ -27,6 +27,7 @@ const SHELL_ASSETS = [
   './js/ledger.js',
   './js/store.js',
   './js/config.js',
+  './js/sync.js',
   './js/counter.js',
   './js/pose.js',
   './manifest.webmanifest',
@@ -67,6 +68,11 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
+
+  // Supabase must never be served from cache. A stale ledger read would show a
+  // balance that has already been spent on another device, and a cached auth
+  // response would be worse still.
+  if (url.hostname.endsWith('.supabase.co')) return;
 
   if (MODEL_HOSTS.includes(url.hostname)) {
     event.respondWith(cacheFirst(request, MODEL_CACHE));

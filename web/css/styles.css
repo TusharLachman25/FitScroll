@@ -207,6 +207,87 @@ body {
   color: var(--muted);
 }
 
+/* ----------------------------------------------------------------- auth */
+
+.view.auth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+}
+
+.auth-inner {
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
+}
+
+.auth-mark {
+  border-radius: 20px;
+}
+
+.auth-title {
+  margin: 18px 0 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.auth-tagline {
+  margin: 8px 0 32px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.button.google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #fff;
+  color: #1f2328;
+}
+
+.google-g {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #4285f4;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.auth-error {
+  margin: 14px 0 0;
+  color: var(--crimson);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.account-email {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.account-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.account-actions .button {
+  padding: 13px 16px;
+  font-size: 14px;
+}
+
 /* ------------------------------------------------------------- settings */
 
 .segmented {

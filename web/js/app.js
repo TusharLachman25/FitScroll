@@ -2,6 +2,15 @@ import { MAX_CAP_MINUTES } from './bank.js';
 import { BankStore } from './store.js';
 import { COACHING, PushUpCounter, STRICTNESS, profileFor } from './counter.js';
 import { ARM_BONES, BODY_BONES, FRAME_BONES, DRAWN_LANDMARKS, PoseTracker } from './pose.js';
+import {
+  currentUser,
+  onAuthChange,
+  pullSettings,
+  pushSettings,
+  signInWithGoogle,
+  signOut,
+  syncNow,
+} from './sync.js';
 
 const APP_VERSION = '0.1.0';
 
@@ -50,12 +59,15 @@ function formatTimeUntil(epochMillis, now = Date.now()) {
 // ------------------------------------------------------------------- views
 
 const views = {
+  auth: $('view-auth'),
   home: $('view-home'),
   workout: $('view-workout'),
   settings: $('view-settings'),
 };
 
-let activeView = 'home';
+let activeView = 'auth';
+let sessionUser = null;
+let lastSyncedAt = null;
 
 function show(name) {
   activeView = name;
@@ -144,6 +156,7 @@ function renderSettings() {
     button.addEventListener('click', () => {
       store.saveSettings({ strictness: candidate.level });
       renderSettings();
+      pushSettings(store).catch(() => {});
     });
     picker.appendChild(button);
   });
@@ -161,6 +174,9 @@ function renderSettings() {
   );
   $('cap-slider').value = String(capIndex);
   $('cap-value').textContent = formatMinutes(Math.min(settings.capMinutes, MAX_CAP_MINUTES));
+
+  $('account-email').textContent = sessionUser?.email ?? 'Signed in';
+  $('sync-status').textContent = syncStatusLine();
 
   $('target-scheme').value = settings.targetScheme || 'instagram://app';
   $('version-line').textContent =
@@ -181,6 +197,49 @@ function runtimeLabel() {
     window.matchMedia?.('(display-mode: standalone)')?.matches === true ||
     window.navigator.standalone === true;
   return standalone ? 'home-screen app' : 'browser tab';
+}
+
+// -------------------------------------------------------------------- sync
+
+function syncStatusLine() {
+  const queued = store.pendingEvents().length;
+  if (queued > 0) return `${queued} change${queued === 1 ? '' : 's'} waiting to upload`;
+  if (lastSyncedAt === null) return 'Not synced yet';
+  return `Synced ${formatTimeAgo(lastSyncedAt)}`;
+}
+
+function formatTimeAgo(at) {
+  const seconds = Math.floor((Date.now() - at) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  return `${Math.floor(minutes / 60)}h ago`;
+}
+
+/**
+ * Syncs without letting a failure surface as an error.
+ *
+ * Everything works offline by design — the balance on this device is already
+ * correct and unsent events stay queued — so a dropped connection is a status
+ * line, not an interruption.
+ */
+async function syncQuietly() {
+  const result = await syncNow(store).catch(() => ({ ok: false }));
+  if (result.ok) lastSyncedAt = Date.now();
+  if (activeView === 'home') renderHome();
+  if (activeView === 'settings') $('sync-status').textContent = syncStatusLine();
+  return result;
+}
+
+async function enterApp() {
+  // Settle before anything else: the automation reopens this page on every
+  // Instagram launch, and that return is the only moment iOS gives us to
+  // charge for the time spent away.
+  settleIfReturned();
+  show('home');
+  await pullSettings(store);
+  await syncQuietly();
+  renderHome();
 }
 
 // ----------------------------------------------------------------- workout
@@ -432,6 +491,9 @@ $('bank-set').addEventListener('click', () => {
   }
 
   show('home');
+  // Push straight away rather than waiting for the background tick — a set is
+  // exactly the moment the other device's balance should change.
+  syncQuietly();
 });
 
 $('discard-set').addEventListener('click', () => {
@@ -453,25 +515,84 @@ $('cap-slider').addEventListener('input', (event) => {
   renderSettings();
 });
 
+// Pushed on release rather than on every input, so dragging the slider does not
+// fire a write per pixel.
+$('cap-slider').addEventListener('change', () => {
+  pushSettings(store).catch(() => {});
+});
+
 $('target-scheme').addEventListener('change', (event) => {
   store.saveSettings({ targetScheme: event.target.value.trim() });
 });
 
 $('clear-bank').addEventListener('click', () => {
-  if (confirm('Delete every banked minute? This cannot be undone.')) {
+  if (confirm('Zero your banked minutes on every device? This cannot be undone.')) {
     store.clear();
     renderSettings();
+    syncQuietly();
   }
 });
+
+// ----------------------------------------------------------------- account
+
+$('sign-in').addEventListener('click', async () => {
+  const error = $('auth-error');
+  error.classList.add('hidden');
+  $('sign-in').disabled = true;
+
+  try {
+    const result = await signInWithGoogle();
+    if (result?.error) throw result.error;
+    // On success the browser navigates away to Google, so nothing below runs.
+  } catch (failure) {
+    $('sign-in').disabled = false;
+    error.textContent =
+      failure?.message ?? 'Could not reach the sign-in service. Check your connection.';
+    error.classList.remove('hidden');
+  }
+});
+
+$('sign-out').addEventListener('click', async () => {
+  const confirmed = confirm(
+    'Sign out? Your banked minutes stay on your account and come back when you sign in again.',
+  );
+  if (!confirmed) return;
+
+  await signOut(store).catch(() => {});
+  sessionUser = null;
+  lastSyncedAt = null;
+  show('auth');
+  $('sign-in').disabled = false;
+});
+
+$('sync-now').addEventListener('click', async () => {
+  $('sync-status').textContent = 'Syncing…';
+  const result = await syncQuietly();
+  if (!result.ok) $('sync-status').textContent = 'Could not sync — will retry';
+});
+
+onAuthChange(async (user) => {
+  sessionUser = user;
+  if (user) {
+    if (activeView === 'auth') await enterApp();
+  } else {
+    show('auth');
+    $('sign-in').disabled = false;
+  }
+});
+
+// ------------------------------------------------------------------- ticks
 
 // Returning to the page is the only moment iOS gives us to reconcile usage.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
+  if (!sessionUser) return;
   settleIfReturned();
   if (activeView === 'home') renderHome();
   // The browser drops a screen wake lock whenever the page is hidden, and does
   // not restore it, so mid-workout it has to be asked for again.
   if (activeView === 'workout') acquireWakeLock();
+  syncQuietly();
 });
 
 // The balance falls as credits expire even with nobody touching the screen.
@@ -479,11 +600,26 @@ setInterval(() => {
   if (activeView === 'home') renderHome();
 }, 1000);
 
+// A slow background pull, so another device's spending turns up without anyone
+// having to refresh. Deliberately unhurried: the log is tiny, and everything
+// that actually matters already syncs on the event that caused it.
+setInterval(() => {
+  if (sessionUser && document.visibilityState === 'visible') syncQuietly();
+}, 60_000);
+
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {
     // Offline support is a bonus; the app is fully usable without it.
   });
 }
 
-settleIfReturned();
-show('home');
+async function boot() {
+  sessionUser = await currentUser().catch(() => null);
+  if (sessionUser) {
+    await enterApp();
+  } else {
+    show('auth');
+  }
+}
+
+boot();

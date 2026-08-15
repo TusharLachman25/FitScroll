@@ -18,10 +18,34 @@
   </head>
 
   <body>
+    <!-- Shown until there is a session. Your bank lives on the account, not on
+         the device, which is what lets Safari and the home-screen app agree and
+         what stops a cleared browser store taking your minutes with it. -->
+    <main id="view-auth" class="view hidden auth">
+      <div class="auth-inner">
+        <img class="auth-mark" src="icons/icon-192.png" alt="" width="72" height="72" />
+        <h1 class="auth-title">FitScroll</h1>
+        <p class="auth-tagline">Earn your scroll. One push-up buys one minute.</p>
+
+        <button id="sign-in" class="button google">
+          <span class="google-g" aria-hidden="true">G</span>
+          Continue with Google
+        </button>
+
+        <p id="auth-error" class="auth-error hidden"></p>
+
+        <p class="fine-print">
+          Your bank syncs to your account, so the same minutes count on every device.
+          Push-ups are still counted entirely on this phone — no video is recorded and
+          no frame ever leaves it.
+        </p>
+      </div>
+    </main>
+
     <!-- Home doubles as the gate. The iOS Shortcut opens this page whenever a
          blocked app launches, so this is the screen that decides whether the
          scroll is paid for. -->
-    <main id="view-home" class="view">
+    <main id="view-home" class="view hidden">
       <header class="topbar">
         <h1 class="wordmark">FitScroll</h1>
         <button id="open-settings" class="icon-button" aria-label="Settings">&#9881;</button>
@@ -110,6 +134,20 @@
         <button id="settings-back" class="icon-button" aria-label="Back">&#8592;</button>
         <h1 class="wordmark">Settings</h1>
       </header>
+
+      <p class="section-label">Account</p>
+      <section class="card">
+        <p id="account-email" class="account-email"></p>
+        <p class="muted" id="sync-status">Not synced yet</p>
+        <div class="account-actions">
+          <button id="sync-now" class="button ghost">Sync now</button>
+          <button id="sign-out" class="button danger">Sign out</button>
+        </div>
+        <p class="muted dim">
+          Signing out clears this device only. Your banked minutes live on your
+          account and come back when you sign in again.
+        </p>
+      </section>
 
       <p class="section-label">Form strictness</p>
       <section class="card">
