@@ -38,12 +38,11 @@ jobs:
         working-directory: web
         run: node --test
 
-      # enablement turns Pages on via the API the first time this runs, so
-      # making the repo public is the only step needed - no visit to the
-      # repository settings.
+      # No `enablement: true` here. Creating the Pages site needs repository
+      # administration rights, which the workflow's GITHUB_TOKEN does not have,
+      # so asking for it fails the run outright. The site is created once out
+      # of band; this step only reads the existing configuration.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
