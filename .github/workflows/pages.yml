@@ -38,7 +38,12 @@ jobs:
         working-directory: web
         run: node --test
 
+      # enablement turns Pages on via the API the first time this runs, so
+      # making the repo public is the only step needed - no visit to the
+      # repository settings.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
