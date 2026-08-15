@@ -162,7 +162,24 @@ function renderSettings() {
   $('cap-value').textContent = formatMinutes(Math.min(settings.capMinutes, MAX_CAP_MINUTES));
 
   $('target-scheme').value = settings.targetScheme || 'instagram://app';
-  $('version-line').textContent = `FitScroll ${APP_VERSION} — everything stays on this device.`;
+  $('version-line').textContent =
+    `FitScroll ${APP_VERSION} · running as a ${runtimeLabel()}. ` +
+    'Everything stays on this device.';
+}
+
+/**
+ * Whether this is the home-screen web app or an ordinary browser tab.
+ *
+ * Worth showing, because iOS gives the two separate storage containers for the
+ * same site: minutes banked in one are invisible in the other. Since the
+ * Shortcuts automation can only hand a URL to Safari, anyone using it and the
+ * home-screen icon together ends up with two banks and no clue why.
+ */
+function runtimeLabel() {
+  const standalone =
+    window.matchMedia?.('(display-mode: standalone)')?.matches === true ||
+    window.navigator.standalone === true;
+  return standalone ? 'home-screen app' : 'browser tab';
 }
 
 // ----------------------------------------------------------------- workout

@@ -20,16 +20,17 @@ The iPhone version is **friction at the moment of the impulse**, not a lock. Tha
 
 ---
 
-## 1. Install the web app
+## 1. Open the web app
 
-1. Open the FitScroll URL in **Safari** (it must be Safari — Chrome on iOS cannot install web apps).
-2. Tap the **Share** button.
-3. Tap **Add to Home Screen**.
-4. Name it *FitScroll* and tap **Add**.
+**https://tusharlachman25.github.io/FitScroll/**
 
-Launch it from the home screen icon, not from Safari. Only the home-screen copy runs full-screen and keeps its own storage reliably.
+Open it in **Safari**. Chrome on iOS cannot install web apps, so this only works there.
 
-> Your banked minutes live in this app's local storage. Deleting the home-screen icon, or clearing Safari website data, wipes your bank.
+If you intend to use the Shortcuts automation in step 2, **stop here and bookmark it** — read *"Pick one runtime"* below before adding anything to your home screen, because the two do not share a bank.
+
+If you would rather have the full-screen app and skip the automation: **Share** → **Add to Home Screen** → **Add**.
+
+> Your banked minutes live in local storage. Clearing Safari website data, or deleting the home-screen icon, wipes your bank.
 
 ### Give it camera access
 
@@ -49,12 +50,41 @@ This is what makes Instagram bounce you into FitScroll.
 6. Make sure **Is Opened** is ticked and **Is Closed** is not.
 7. Tap **Next**.
 8. Tap **New Blank Automation** (or **Add Action**).
-9. Search for **Open App**, add it, and pick **FitScroll**.
+9. Search for **Open URLs** — *not* "Open App" — add it, and paste:
+   ```
+   https://tusharlachman25.github.io/FitScroll/
+   ```
 10. Tap **Next**.
 11. **Turn off "Ask Before Running"** and confirm. This is the important step — leave it on and you get a notification you can ignore instead of a redirect.
 12. Tap **Done**.
 
 Now every time you open Instagram, iOS immediately opens FitScroll on top.
+
+### Why not "Open App"?
+
+Because FitScroll will not be in that list, and no amount of scrolling will find it. A home-screen web app is a *web clip*, not an installed application — iOS does not register it in the app list that Shortcuts reads. Only real App Store apps appear there, which is precisely the thing you cannot ship without a developer account.
+
+`Open URLs` is the way in. The catch is what it opens.
+
+---
+
+## Pick one runtime and stay in it
+
+`Open URLs` hands the link to **Safari**, not to your home-screen icon. iOS has no mechanism for a URL to launch an installed web clip.
+
+That matters more than it sounds, because **iOS keeps separate storage for Safari and for a home-screen web app on the same site.** Your banked minutes live in local storage. Bank 30 minutes in the home-screen app, get redirected into Safari, and Safari will show you a bank of zero — not a bug, a different container.
+
+So choose:
+
+**Option A — Safari as your runtime (use this if you want the automation).**
+Skip "Add to Home Screen" entirely, or delete the icon if you already made one. Open FitScroll from the automation, or bookmark the URL. Everything works: camera, counting, the bank. You just get Safari's address bar at the top.
+
+**Option B — home-screen app, no automation.**
+Keep the icon, drop the Shortcut, and open FitScroll yourself before reaching for Instagram. Full-screen, works offline, feels like an app. Relies entirely on your own discipline, since nothing will interrupt you.
+
+Option A is the honest recommendation — the interruption is the whole point, and a nicer-looking app you never open is worth less than a Safari tab that gets in your way at the right moment.
+
+If you have already banked minutes in the wrong container, they cannot be moved across. Easiest is to accept the loss and do a fresh set in whichever one you settle on.
 
 ---
 
@@ -81,13 +111,17 @@ Two ways to avoid it entirely:
 
 ## 4. Things that will trip you up
 
+**"FitScroll isn't in the Open App list."** It never will be. A home-screen web app is a web clip, not an installed application, and Shortcuts only lists real apps. Use the **Open URLs** action with the FitScroll address instead.
+
+**"My bank says zero but I banked minutes yesterday."** You are probably switching between Safari and the home-screen icon. iOS gives those two separate storage containers on the same site, so each keeps its own bank. Pick one and stay in it — see *"Pick one runtime"* above.
+
 **"The automation didn't run."** iOS sometimes needs the Shortcuts app to have been opened once since the last reboot. Open Shortcuts, then try again.
 
 **"It asks before running."** Go back into the automation and turn off *Ask Before Running*. On older iOS versions this toggle is on the confirmation screen after you tap Next.
 
 **"My minutes disappeared."** Either they expired — every minute dies 24 hours after the push-up that earned it — or Safari website data was cleared.
 
-**"The camera is black."** Close and reopen the app from the home screen. iOS occasionally hands a PWA a dead camera track after it has been backgrounded.
+**"The camera is black."** Close the tab or app fully and reopen it. iOS occasionally hands a backgrounded web app a dead camera track.
 
 **"It counted a rep I didn't do."** Raise the strictness in Settings. Level 3 is roughly a gym-legal push-up; level 5 wants near-floor depth, a dead-straight body, and no bouncing.
 
