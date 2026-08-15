@@ -63,19 +63,28 @@ object BankMath {
      * tells you when further reps stopped counting, which matters when someone
      * has set a small cap and is grinding out a set for nothing.
      */
-    fun earn(credits: List<Credit>, reps: Int, now: Long, capSeconds: Int): EarnOutcome {
-        val live = purge(credits, now)
-        if (reps <= 0) return EarnOutcome(live, grantedSeconds = 0, wastedSeconds = 0)
+    fun earn(credits: List<Credit>, reps: Int, now: Long, capSeconds: Int): EarnOutcome =
+        earnSeconds(credits, reps * SECONDS_PER_REP, now, capSeconds)
 
-        val wanted = reps * SECONDS_PER_REP
+    /**
+     * As [earn], but in seconds rather than reps.
+     *
+     * Replaying a synced ledger works in seconds: an event records what was
+     * banked, not how many push-ups produced it, so that a change to the
+     * exchange rate never retroactively rewrites history.
+     */
+    fun earnSeconds(credits: List<Credit>, seconds: Int, now: Long, capSeconds: Int): EarnOutcome {
+        val live = purge(credits, now)
+        if (seconds <= 0) return EarnOutcome(live, grantedSeconds = 0, wastedSeconds = 0)
+
         val room = max(0, capSeconds - live.sumOf { it.remainingSeconds })
-        val granted = min(wanted, room)
+        val granted = min(seconds, room)
 
         val updated = if (granted > 0) live + Credit(earnedAt = now, remainingSeconds = granted) else live
         return EarnOutcome(
             credits = updated,
             grantedSeconds = granted,
-            wastedSeconds = wanted - granted,
+            wastedSeconds = seconds - granted,
         )
     }
 
