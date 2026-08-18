@@ -1,6 +1,7 @@
 package com.fitscroll.app.block
 
 import android.accessibilityservice.AccessibilityService
+import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -32,6 +33,7 @@ class FitScrollAccessibilityService : AccessibilityService() {
     private lateinit var bank: BankRepository
     private lateinit var settings: SettingsRepository
     private lateinit var lockOverlay: LockOverlay
+    private lateinit var keyguard: KeyguardManager
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -40,12 +42,40 @@ class FitScrollAccessibilityService : AccessibilityService() {
     private var warningShown = false
 
     /**
+     * The last package seen coming to the front, whether charged for or not.
+     *
+     * Kept because window-state events describe *transitions*, and the screen
+     * going dark and coming back is not one. Without a remembered foreground,
+     * the only route back into a drain is switching apps — which is exactly
+     * what someone resuming an interrupted scroll does not do.
+     */
+    private var lastForegroundPackage: String? = null
+
+    /**
      * Turning the screen off leaves the foreground app unchanged, so no window
      * event arrives and the drain would keep billing a phone in a pocket.
+     *
+     * Coming back has the mirror-image problem, and that one leaks screen time
+     * rather than over-charging for it: unlocking straight back into the app
+     * that was already in front raises no window-state change for it, and the
+     * keyguard's own events are reported against `com.android.systemui`, which
+     * is deliberately ignored below. The drain therefore stayed stopped and the
+     * blocked app was free until the user happened to switch apps. The
+     * remembered foreground is re-evaluated here instead.
      */
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == Intent.ACTION_SCREEN_OFF) stopDrain()
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> stopDrain()
+
+                // SCREEN_ON arrives while the keyguard is still up, so resuming
+                // is gated on the lock actually being open: charging someone
+                // for glancing at their lock screen would be wrong.
+                // USER_PRESENT covers the ordinary unlock, and the SCREEN_ON
+                // path catches devices with no secure lock set, where
+                // USER_PRESENT is not guaranteed to arrive at all.
+                Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> resumeIfUnlocked()
+            }
         }
     }
 
@@ -54,7 +84,16 @@ class FitScrollAccessibilityService : AccessibilityService() {
         bank = BankRepository.get(this)
         settings = SettingsRepository.get(this)
         lockOverlay = LockOverlay(this)
-        registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
+        keyguard = getSystemService(KeyguardManager::class.java)
+
+        registerReceiver(
+            screenReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_USER_PRESENT)
+            },
+        )
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -66,6 +105,7 @@ class FitScrollAccessibilityService : AccessibilityService() {
         // would pause the drain every time the user glanced at a notification.
         if (packageName in TRANSIENT_SYSTEM_PACKAGES) return
 
+        lastForegroundPackage = packageName
         onForegroundApp(packageName)
     }
 
@@ -86,6 +126,20 @@ class FitScrollAccessibilityService : AccessibilityService() {
     }
 
     // ------------------------------------------------------------ decisions
+
+    /**
+     * Re-applies the rules to whatever was in front when the screen went dark.
+     *
+     * Routed through the same decision path as a window change on purpose, so
+     * an empty bank raises the lock here too rather than merely leaving the
+     * drain stopped: credits expire on a wall clock, so a balance that was
+     * healthy at screen-off is not necessarily healthy on the way back.
+     */
+    private fun resumeIfUnlocked() {
+        if (keyguard.isKeyguardLocked) return
+        val foreground = lastForegroundPackage ?: return
+        onForegroundApp(foreground)
+    }
 
     private fun onForegroundApp(foreground: String) {
         if (foreground == packageName) {
