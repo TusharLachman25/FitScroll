@@ -95,15 +95,21 @@ fun FitScrollNavHost(startOnWorkout: Boolean) {
  * The overflow is called out explicitly rather than quietly swallowed: doing
  * thirty push-ups and gaining four minutes is confusing unless the bank limit
  * is named as the reason.
+ *
+ * Takes seconds rather than minutes because the last credit before the cap is
+ * routinely a part-minute. Rounding down to whole minutes first meant a set
+ * that banked forty seconds reported "0m" against "0m" wasted, fell through
+ * every branch, and showed no snackbar at all — reps that did land, vanishing
+ * without acknowledgement.
  */
-private suspend fun SnackbarHostState.showMessage(grantedMinutes: Int, wastedMinutes: Int) {
+private suspend fun SnackbarHostState.showMessage(grantedSeconds: Int, wastedSeconds: Int) {
     val message = when {
-        grantedMinutes <= 0 && wastedMinutes > 0 ->
+        grantedSeconds <= 0 && wastedSeconds > 0 ->
             "Bank is already full — those reps earned nothing"
-        wastedMinutes > 0 ->
-            "Banked ${formatMinutes(grantedMinutes)} — ${formatMinutes(wastedMinutes)} hit your bank limit"
-        grantedMinutes > 0 ->
-            "Banked ${formatMinutes(grantedMinutes)}"
+        wastedSeconds > 0 ->
+            "Banked ${formatBalance(grantedSeconds)} — ${formatBalance(wastedSeconds)} hit your bank limit"
+        grantedSeconds > 0 ->
+            "Banked ${formatBalance(grantedSeconds)}"
         else -> return
     }
     showSnackbar(message)

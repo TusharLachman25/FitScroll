@@ -47,8 +47,25 @@ class PoseAnalyzer(private val onResult: (PoseResult) -> Unit) : ImageAnalysis.A
             .build(),
     )
 
+    /**
+     * Set the moment the screen starts tearing down, before the detector is
+     * closed.
+     *
+     * Unbinding the camera does not retract a frame CameraX has already handed
+     * to the analysis executor, so one more `analyze` can land after
+     * [release] — on a detector that is now closed, which throws. Volatile
+     * because it is written on the main thread and read on the analysis thread.
+     */
+    @Volatile
+    private var released = false
+
     @OptIn(ExperimentalGetImage::class)
     override fun analyze(imageProxy: ImageProxy) {
+        if (released) {
+            imageProxy.close()
+            return
+        }
+
         val mediaImage = imageProxy.image
         if (mediaImage == null) {
             imageProxy.close()
@@ -63,13 +80,22 @@ class PoseAnalyzer(private val onResult: (PoseResult) -> Unit) : ImageAnalysis.A
         val width = if (quarterTurned) imageProxy.height else imageProxy.width
         val height = if (quarterTurned) imageProxy.width else imageProxy.height
 
-        detector.process(InputImage.fromMediaImage(mediaImage, rotation))
-            .addOnSuccessListener { pose -> onResult(interpret(pose, width, height)) }
-            .addOnFailureListener { onResult(PoseResult(skeleton = null, metrics = null)) }
-            .addOnCompleteListener { imageProxy.close() }
+        // Guarded rather than trusted: `released` can flip between the check
+        // above and this call. Losing the last frame of a set that is already
+        // over costs nothing; crashing the workout screen on the way out costs
+        // the whole set.
+        runCatching {
+            detector.process(InputImage.fromMediaImage(mediaImage, rotation))
+                .addOnSuccessListener { pose -> onResult(interpret(pose, width, height)) }
+                .addOnFailureListener { onResult(PoseResult(skeleton = null, metrics = null)) }
+                .addOnCompleteListener { imageProxy.close() }
+        }.onFailure { imageProxy.close() }
     }
 
-    fun release() = detector.close()
+    fun release() {
+        released = true
+        runCatching { detector.close() }
+    }
 
     private fun interpret(pose: Pose, width: Int, height: Int): PoseResult {
         val joints = DRAWN_LANDMARKS.mapNotNull { type ->

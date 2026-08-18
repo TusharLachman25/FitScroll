@@ -2,7 +2,11 @@ package com.fitscroll.app.ui
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings as AndroidSettings
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -28,7 +32,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Cameraswitch
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -53,13 +57,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fitscroll.app.pose.PoseAnalyzer
 import com.fitscroll.app.ui.theme.Amber
@@ -79,7 +86,7 @@ import kotlin.coroutines.suspendCoroutine
  */
 @Composable
 fun WorkoutScreen(
-    onBankedSet: (grantedMinutes: Int, wastedMinutes: Int) -> Unit,
+    onBankedSet: (grantedSeconds: Int, wastedSeconds: Int) -> Unit,
     onBack: () -> Unit,
     viewModel: WorkoutViewModel = viewModel(),
 ) {
@@ -87,19 +94,47 @@ fun WorkoutScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
 
+    val activity = LocalActivity.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     var hasCameraPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
                 PackageManager.PERMISSION_GRANTED,
         )
     }
+    var refused by remember { mutableStateOf(false) }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { granted -> hasCameraPermission = granted }
+    ) { granted ->
+        hasCameraPermission = granted
+        refused = !granted
+    }
 
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
+
+    // Re-read on every resume, because the grant can happen somewhere this
+    // screen never sees: the user leaving for system Settings and coming back.
+    // Without this the camera stays dark behind a prompt for a permission that
+    // has already been given.
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            hasCameraPermission =
+                ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                    PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    // Android stops showing the system dialog once the permission has been
+    // refused firmly enough, and `launch` then returns denied without putting
+    // anything on screen. A prompt whose only button silently does nothing is
+    // a dead end in the one screen the whole app exists to reach, so past that
+    // point the button has to hand over to system Settings instead.
+    val mustUseSettings = refused && !hasCameraPermission && activity != null &&
+        !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.CAMERA)
 
     // Doing push-ups means not touching the phone, so the display times out
     // mid-set and the camera stops seeing anything. Held on the composition's
@@ -134,7 +169,11 @@ fun WorkoutScreen(
             )
         } else {
             CameraPermissionPrompt(
-                onGrant = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                mustUseSettings = mustUseSettings,
+                onGrant = {
+                    if (mustUseSettings) openAppSettings(context)
+                    else permissionLauncher.launch(Manifest.permission.CAMERA)
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -174,7 +213,7 @@ fun WorkoutScreen(
             state = state,
             onBank = {
                 val outcome = viewModel.bankSet()
-                onBankedSet(outcome.grantedSeconds / 60, outcome.wastedSeconds / 60)
+                onBankedSet(outcome.grantedSeconds, outcome.wastedSeconds)
             },
             onDiscard = viewModel::discardSet,
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -197,7 +236,7 @@ private fun WorkoutTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
-            Icon(Icons.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
         }
         Spacer(Modifier.weight(1f))
         Text(
@@ -304,7 +343,11 @@ private fun WorkoutHud(
 }
 
 @Composable
-private fun CameraPermissionPrompt(onGrant: () -> Unit, modifier: Modifier = Modifier) {
+private fun CameraPermissionPrompt(
+    mustUseSettings: Boolean,
+    onGrant: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier.padding(32.dp),
         verticalArrangement = Arrangement.Center,
@@ -318,16 +361,37 @@ private fun CameraPermissionPrompt(onGrant: () -> Unit, modifier: Modifier = Mod
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "FitScroll counts your push-ups on the phone itself. " +
-                "No video is recorded, and no frame ever leaves the device.",
+            text = if (mustUseSettings) {
+                "Android will not ask again now that it has been refused, so the " +
+                    "switch has to be flipped in system Settings — Permissions, " +
+                    "then Camera."
+            } else {
+                "FitScroll counts your push-ups on the phone itself. " +
+                    "No video is recorded, and no frame ever leaves the device."
+            },
             style = MaterialTheme.typography.bodyLarge,
             color = TextMuted,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(24.dp))
         Button(onClick = onGrant, shape = RoundedCornerShape(16.dp)) {
-            Text("Allow camera")
+            Text(if (mustUseSettings) "Open app settings" else "Allow camera")
         }
+    }
+}
+
+/**
+ * Opens FitScroll's own page in system Settings, the only route back to a
+ * permission Android has stopped prompting for.
+ */
+private fun openAppSettings(context: Context) {
+    runCatching {
+        context.startActivity(
+            Intent(
+                AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", context.packageName, null),
+            ),
+        )
     }
 }
 
@@ -351,8 +415,15 @@ private fun CameraFeed(
     val executor = remember { Executors.newSingleThreadExecutor() }
     val analyzer = remember { PoseAnalyzer(onPoseResult) }
 
+    // Held so teardown can unbind the provider it actually bound, rather than
+    // blocking the main thread on getInstance().get() at the worst possible
+    // moment — leaving the screen. The future is normally already resolved, but
+    // "normally" is not a guarantee worth an ANR on a cold camera stack.
+    val boundProvider = remember { mutableStateOf<ProcessCameraProvider?>(null) }
+
     LaunchedEffect(useFrontCamera) {
         val provider = context.awaitCameraProvider()
+        boundProvider.value = provider
 
         val preview = Preview.Builder().build()
             .also { it.surfaceProvider = previewView.surfaceProvider }
@@ -376,7 +447,10 @@ private fun CameraFeed(
 
     DisposableEffect(Unit) {
         onDispose {
-            runCatching { ProcessCameraProvider.getInstance(context).get().unbindAll() }
+            // Order matters: stop the frames first, then close what consumes
+            // them. Releasing the detector while CameraX still had a frame in
+            // flight put a closed detector on the analysis thread, which throws.
+            runCatching { boundProvider.value?.unbindAll() }
             analyzer.release()
             executor.shutdown()
         }
