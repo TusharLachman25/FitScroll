@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
-import com.fitscroll.app.data.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

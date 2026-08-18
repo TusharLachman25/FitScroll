@@ -50,7 +50,7 @@ Needs JDK 17+ and the Android SDK (`ANDROID_HOME` set, or `android/local.propert
 
 ```bash
 cd android
-./gradlew testDebugUnitTest     # 33 unit tests
+./gradlew testDebugUnitTest     # 38 unit tests
 ./gradlew assembleRelease       # APKs in app/build/outputs/apk/release/
 ```
 
@@ -60,7 +60,7 @@ Release builds are signed with your local debug key on purpose. FitScroll is sid
 
 ```bash
 cd web
-node --test                     # 33 rule tests, no install step
+node --test                     # 38 rule tests, no install step
 ```
 
 ---
