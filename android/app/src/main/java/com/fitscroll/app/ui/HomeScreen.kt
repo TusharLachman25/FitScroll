@@ -41,7 +41,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.fitscroll.app.block.AppInventory
 import com.fitscroll.app.block.BlockingStatus
 import com.fitscroll.app.data.BankRepository
@@ -75,12 +78,22 @@ fun HomeScreen(
     // wall clock, and the accessibility service drains it from another
     // component entirely. A one-second tick keeps the number honest, and picks
     // up permission changes made in system Settings on the way back.
-    LaunchedEffect(Unit) {
-        while (true) {
-            bank.refresh()
-            accessibilityOn = BlockingStatus.isAccessibilityServiceEnabled(context)
-            overlayOn = BlockingStatus.canDrawOverlays(context)
-            delay(1_000)
+    //
+    // Bound to RESUMED rather than left to run for the lifetime of the
+    // composition. A composition outlives the screen being visible, so an
+    // unscoped loop kept polling once a second for as long as the process
+    // lived — a Settings.Secure lookup, an AppOps check and a ledger refresh
+    // every second behind a phone that was in a pocket. Nothing here is worth
+    // observing while nobody is looking at it.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                bank.refresh()
+                accessibilityOn = BlockingStatus.isAccessibilityServiceEnabled(context)
+                overlayOn = BlockingStatus.canDrawOverlays(context)
+                delay(1_000)
+            }
         }
     }
 
