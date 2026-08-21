@@ -1,5 +1,7 @@
 package com.fitscroll.app.pose
 
+import kotlin.math.max
+
 /** Where in the movement the athlete currently is. */
 enum class RepPhase { SEARCHING, TOP, BOTTOM }
 
@@ -39,8 +41,9 @@ data class CounterUpdate(
  * test with a synthetic descent.
  *
  * A rep is the round trip TOP -> BOTTOM -> TOP, and it banks a minute if it
- * reached the required depth, took at least the minimum duration, and did not
- * spend longer than the level's grace outside the body-line tolerance.
+ * reached the required depth, took at least the minimum duration, moved the
+ * body far enough to have been a push-up at all, and did not spend longer than
+ * the level's grace outside the body-line tolerance.
  */
 class PushUpCounter(private var profile: StrictnessProfile) {
 
@@ -64,6 +67,21 @@ class PushUpCounter(private var profile: StrictnessProfile) {
     private var smoothedElbow: Float? = null
     private var smoothedBody: Float? = null
 
+    /**
+     * Where the shoulders started the descent, how far they got, and what to
+     * measure that against.
+     *
+     * Angles alone cannot tell a push-up from an arm bent in front of the lens.
+     * Standing upright presents a locked-out elbow and a straight
+     * shoulder-hip-knee line, so a curl walks the elbow through both thresholds
+     * with the form check applauding. The body has to actually move.
+     */
+    private var restingShoulderY: Float = 0f
+    private var restingTorsoLength: Float = UNMEASURABLE
+    private var descentTopShoulderY: Float = 0f
+    private var deepestShoulderY: Float = 0f
+    private var descentTorsoLength: Float = UNMEASURABLE
+
     private var rejectionMessage: String? = null
     private var rejectionExpiresAt: Long = 0L
 
@@ -74,6 +92,7 @@ class PushUpCounter(private var profile: StrictnessProfile) {
         phase = RepPhase.SEARCHING
         descentStartedAt = NOT_DESCENDING
         formBadMillis = 0L
+        descentTorsoLength = UNMEASURABLE
     }
 
     fun reset() {
@@ -86,6 +105,11 @@ class PushUpCounter(private var profile: StrictnessProfile) {
         smoothedBody = null
         rejectionMessage = null
         rejectionExpiresAt = 0L
+        restingShoulderY = 0f
+        restingTorsoLength = UNMEASURABLE
+        descentTopShoulderY = 0f
+        deepestShoulderY = 0f
+        descentTorsoLength = UNMEASURABLE
     }
 
     /**
@@ -104,6 +128,7 @@ class PushUpCounter(private var profile: StrictnessProfile) {
             formBadMillis = 0L
             smoothedElbow = null
             smoothedBody = null
+            descentTorsoLength = UNMEASURABLE
             return update(
                 coaching = Coaching.FINDING_YOU,
                 depth = 0f,
@@ -133,6 +158,28 @@ class PushUpCounter(private var profile: StrictnessProfile) {
         val depth = ((profile.upElbowAngle - elbow) /
             (profile.upElbowAngle - profile.downElbowAngle)).coerceIn(0f, 1f)
 
+        // Where the body rests at lockout, and how long the torso measures
+        // there. Sampled only while the arm is actually locked out, so the
+        // frame that begins a descent leaves these holding the position it
+        // started from - by the time a frame shows a bent elbow the shoulders
+        // have already dropped, and measuring the descent from there would
+        // compare it against its own midpoint.
+        if (elbow >= profile.upElbowAngle) {
+            restingShoulderY = metrics.shoulderY
+            restingTorsoLength =
+                if (metrics.torsoConfidence >= MIN_TRACKING_CONFIDENCE) {
+                    metrics.torsoLength
+                } else {
+                    UNMEASURABLE
+                }
+        }
+
+        // Tracked from the moment the descent starts, so the deepest point of
+        // the rep is known by the time it is judged at the top.
+        if (descentStartedAt != NOT_DESCENDING) {
+            deepestShoulderY = max(deepestShoulderY, metrics.shoulderY)
+        }
+
         var counted = false
         var coaching = Coaching.GET_SET
 
@@ -144,6 +191,7 @@ class PushUpCounter(private var profile: StrictnessProfile) {
                     phase = RepPhase.TOP
                     descentStartedAt = NOT_DESCENDING
                     formBadMillis = 0L
+                    descentTorsoLength = UNMEASURABLE
                 }
                 coaching = Coaching.GET_SET
             }
@@ -162,6 +210,13 @@ class PushUpCounter(private var profile: StrictnessProfile) {
                     if (descentStartedAt == NOT_DESCENDING) {
                         descentStartedAt = nowMillis
                         formBadMillis = 0L
+                        descentTopShoulderY = restingShoulderY
+                        deepestShoulderY = max(restingShoulderY, metrics.shoulderY)
+                        // The reference length is the one measured at the top.
+                        // Perspective shortens the torso as the body drops, so
+                        // re-reading it at the bottom would shrink the yardstick
+                        // exactly when the travel is being measured against it.
+                        descentTorsoLength = restingTorsoLength
                     }
                     if (elbow <= profile.downElbowAngle) phase = RepPhase.BOTTOM
                 } else {
@@ -186,6 +241,9 @@ class PushUpCounter(private var profile: StrictnessProfile) {
 
                         formBadMillis > profile.formGraceMillis ->
                             reject("Hips dropped — rep not counted", nowMillis)
+
+                        !travelledFarEnough() ->
+                            reject("Move your body, not just your arms", nowMillis)
 
                         else -> {
                             reps++
@@ -215,6 +273,21 @@ class PushUpCounter(private var profile: StrictnessProfile) {
         if (lastFrameAt == NOT_DESCENDING) 0L
         else (now - lastFrameAt).coerceIn(0L, MAX_FRAME_DELTA_MILLIS)
 
+    /**
+     * Whether the shoulders dropped far enough for this to have been a push-up.
+     *
+     * Scaled to the athlete's own torso, so it holds at any distance from the
+     * lens. When there is nothing to measure against - hips out of frame, or
+     * the model guessing at them - the rep is allowed rather than failed, which
+     * is how the body-line check already treats an unreadable skeleton: a
+     * rejection the user cannot act on is worse than a check not run.
+     */
+    private fun travelledFarEnough(): Boolean {
+        if (descentTorsoLength <= MIN_TORSO_PIXELS) return true
+        val travel = deepestShoulderY - descentTopShoulderY
+        return travel >= descentTorsoLength * profile.minShoulderTravelRatio
+    }
+
     private fun reject(message: String, now: Long) {
         rejectionMessage = message
         rejectionExpiresAt = now + REJECTION_HOLD_MILLIS
@@ -242,5 +315,14 @@ class PushUpCounter(private var profile: StrictnessProfile) {
         const val NOT_DESCENDING = -1L
         const val REJECTION_HOLD_MILLIS = 1_800L
         const val MAX_FRAME_DELTA_MILLIS = 200L
+
+        /** No usable torso reading, so travel cannot be judged this rep. */
+        const val UNMEASURABLE = 0f
+
+        /**
+         * Below this a torso reading is noise rather than a measurement, and
+         * dividing by it would turn a stationary subject into a passing rep.
+         */
+        const val MIN_TORSO_PIXELS = 24f
     }
 }
