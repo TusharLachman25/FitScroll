@@ -341,6 +341,7 @@ class FitScrollAccessibilityService : AccessibilityService() {
         lockOverlay.show(
             appLabel = AppInventory.labelFor(this, blockedPackage),
             balanceLabel = formatRemaining(bank.balanceSeconds()),
+            canLaunchCamera = BlockingStatus.canDrawOverlays(this),
             onEarn = {
                 leaveBlockedApp()
                 openWorkout()

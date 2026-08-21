@@ -5,4 +5,38 @@
     <string name="accessibility_service_summary">Locks your chosen apps when your banked minutes run out</string>
 
     <string name="accessibility_service_description">FitScroll needs this to tell which app is on screen, so it can count down your banked minutes while you use a blocked app and lock it the moment they run out.\n\nIt only reads the name of the app in front. It cannot read the contents of any screen, and nothing ever leaves your phone.</string>
+
+    <!--
+      The lock screen. Kept here rather than inline in LockOverlay so the one
+      surface a user meets mid-scroll, at their least patient, is translatable
+      like the rest of the app.
+    -->
+    <string name="lock_title">%1$s is locked</string>
+    <string name="lock_banked">banked</string>
+    <string name="lock_rate">One push-up buys one minute.\nEvery minute you bank lasts 24 hours.</string>
+    <string name="lock_earn">Drop and earn minutes</string>
+    <string name="lock_earn_manual">Open FitScroll to earn</string>
+    <string name="lock_dismiss">Not now</string>
+
+    <!--
+      Shown one at a time on the lock screen.
+
+      Aimed at the decision rather than the person: the point is to make the
+      trade visible at the moment it is being made, not to make anyone feel
+      worse about their body.
+    -->
+    <string-array name="lock_roasts">
+        <item>The feed will still be there in twenty push-ups.</item>
+        <item>You wrote these rules. Past you was sharper than present you.</item>
+        <item>Zero banked. The floor is right there.</item>
+        <item>You have time to scroll, but not to push. Interesting.</item>
+        <item>Twenty reps is ninety seconds. You have spent longer picking a filter.</item>
+        <item>You are not blocked. You are just broke.</item>
+        <item>Currency: push-ups. Balance: nothing. Do the maths.</item>
+        <item>The algorithm has not missed you. Your chest has.</item>
+        <item>This is the part where you get down on the floor. Or give up.</item>
+        <item>Nothing in the bank, nothing on the screen. That was the deal.</item>
+        <item>Your thumb is in better shape than your triceps.</item>
+        <item>Somebody out there is doing push-ups instead of reading this.</item>
+    </string-array>
 </resources>
