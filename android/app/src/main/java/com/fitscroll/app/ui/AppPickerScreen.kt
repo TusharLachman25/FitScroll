@@ -1,9 +1,11 @@
 package com.fitscroll.app.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,12 +19,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fitscroll.app.block.AppInventory
@@ -42,10 +49,10 @@ import com.fitscroll.app.block.InstalledApp
 import com.fitscroll.app.data.SettingsRepository
 import com.fitscroll.app.ui.theme.Ink
 import com.fitscroll.app.ui.theme.Lime
+import com.fitscroll.app.ui.theme.Outline
 import com.fitscroll.app.ui.theme.Surface1
 import com.fitscroll.app.ui.theme.Surface2
 import com.fitscroll.app.ui.theme.TextMuted
-import androidx.compose.foundation.Image
 
 @Composable
 fun AppPickerScreen(onBack: () -> Unit) {
@@ -54,9 +61,27 @@ fun AppPickerScreen(onBack: () -> Unit) {
     val state by settings.state.collectAsStateWithLifecycle()
 
     var apps by remember { mutableStateOf<List<InstalledApp>?>(null) }
+    var query by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         apps = AppInventory.launchableApps(context)
+    }
+
+    val loaded = apps
+
+    // Snapshotted when the list arrives rather than tracked live. Sorting the
+    // already-blocked apps to the top is what makes this screen readable on a
+    // phone with two hundred apps on it - but re-sorting on every toggle would
+    // slide a row out from under the finger that had just tapped it.
+    val pinned = remember(loaded) { state.blockedPackages }
+
+    val visible = remember(loaded, pinned, query) {
+        loaded.orEmpty()
+            .filter { it.label.contains(query.trim(), ignoreCase = true) }
+            .sortedWith(
+                compareByDescending<InstalledApp> { it.packageName in pinned }
+                    .thenBy { it.label.lowercase() },
+            )
     }
 
     Column(
@@ -86,19 +111,54 @@ fun AppPickerScreen(onBack: () -> Unit) {
             }
         }
 
-        val loaded = apps
-        if (loaded == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            singleLine = true,
+            placeholder = { Text("Search apps", color = TextMuted) },
+            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = TextMuted) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { query = "" }) {
+                        Icon(Icons.Rounded.Close, contentDescription = "Clear search", tint = TextMuted)
+                    }
+                }
+            },
+            shape = RoundedCornerShape(16.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Lime,
+                unfocusedBorderColor = Outline,
+                focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+                cursorColor = Lime,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 4.dp),
+        )
+
+        when {
+            loaded == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Lime)
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().navigationBarsPadding(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    start = 20.dp, end = 20.dp, bottom = 32.dp,
-                ),
+
+            visible.isEmpty() -> Box(
+                Modifier.fillMaxSize().padding(32.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                items(loaded, key = { it.packageName }) { app ->
+                Text(
+                    text = "No app matches \"${query.trim()}\"",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = TextMuted,
+                    textAlign = TextAlign.Center,
+                )
+            }
+
+            else -> LazyColumn(
+                modifier = Modifier.fillMaxSize().navigationBarsPadding(),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
+            ) {
+                items(visible, key = { it.packageName }) { app ->
                     val checked = app.packageName in state.blockedPackages
                     AppRow(
                         app = app,
