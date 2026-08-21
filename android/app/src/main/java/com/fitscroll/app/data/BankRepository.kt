@@ -17,10 +17,7 @@ data class BankState(
     val expiringWithinHourSeconds: Int = 0,
     val repsToday: Int = 0,
     val repsAllTime: Int = 0,
-) {
-    val balanceMinutes: Int get() = balanceSeconds / 60
-    val isEmpty: Boolean get() = balanceSeconds <= 0
-}
+)
 
 /**
  * Persists the credit ledger and exposes it as observable state.

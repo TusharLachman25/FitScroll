@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -62,7 +63,8 @@ class ForegroundClassifier(private val context: Context) {
     }
 
     fun start() {
-        context.registerReceiver(
+        ContextCompat.registerReceiver(
+            context,
             packageWatcher,
             IntentFilter().apply {
                 addAction(Intent.ACTION_PACKAGE_ADDED)
@@ -70,6 +72,7 @@ class ForegroundClassifier(private val context: Context) {
                 addAction(Intent.ACTION_PACKAGE_CHANGED)
                 addDataScheme("package")
             },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
         )
 
         // Switching keyboard is a Settings.Secure edit, not a package change,

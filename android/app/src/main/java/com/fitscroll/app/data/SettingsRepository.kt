@@ -49,6 +49,8 @@ class SettingsRepository private constructor(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    private val ownPackage = context.applicationContext.packageName
+
     private val _state = MutableStateFlow(load())
     val state: StateFlow<Settings> = _state.asStateFlow()
 
@@ -56,8 +58,9 @@ class SettingsRepository private constructor(context: Context) {
 
     fun setBlockedPackages(packages: Set<String>) = update {
         // Blocking ourselves would make the lock screen unreachable and leave
-        // the only escape hatch in Android's own settings.
-        it.copy(blockedPackages = packages - OWN_PACKAGE_PREFIXES)
+        // the only escape hatch in Android's own settings. Asked for rather
+        // than hardcoded, since the debug build carries a suffix.
+        it.copy(blockedPackages = packages - ownPackage)
     }
 
     fun setBankCapMinutes(minutes: Int) = update {
@@ -111,11 +114,6 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_STRICTNESS = "strictness"
         private const val KEY_WARN = "warn_before_lock"
         private const val KEY_NOTIFICATIONS_ASKED = "notifications_requested"
-
-        private val OWN_PACKAGE_PREFIXES = setOf(
-            "com.fitscroll.app",
-            "com.fitscroll.app.debug",
-        )
 
         @Volatile
         private var instance: SettingsRepository? = null

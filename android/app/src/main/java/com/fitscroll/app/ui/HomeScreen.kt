@@ -249,10 +249,13 @@ private fun BalanceCard(
         Text(
             text = when {
                 empty -> "Your blocked apps are locked. One push-up buys one minute."
-                nextExpiryAt == null -> "Ready to spend."
+                // No null case for nextExpiryAt below it: a live balance always
+                // has a live credit behind it, so the empty branch above is the
+                // only way it can be absent.
                 expiringSoonSeconds > 0 ->
                     "${formatBalance(expiringSoonSeconds)} expires within the hour — use it or lose it."
-                else -> "Oldest minutes expire ${formatTimeUntil(nextExpiryAt)}."
+                nextExpiryAt != null -> "Oldest minutes expire ${formatTimeUntil(nextExpiryAt)}."
+                else -> "Ready to spend."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = if (expiringSoonSeconds > 0 && !empty) Amber else TextMuted,

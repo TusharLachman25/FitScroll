@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import com.fitscroll.app.pose.Joint
+import com.fitscroll.app.pose.MIN_TRACKING_CONFIDENCE
 import com.fitscroll.app.pose.PoseAnalyzer
 import com.fitscroll.app.pose.SkeletonFrame
 import com.fitscroll.app.ui.theme.Crimson
@@ -109,7 +110,15 @@ private fun DrawScope.drawBones(
     }
 }
 
-private const val MIN_CONFIDENCE = 0.35f
+/**
+ * The same floor the counter judges against.
+ *
+ * Held as a second copy of the number until they inevitably drifted apart, at
+ * which point the overlay would have drawn a limb the counter was ignoring, or
+ * hidden one it was acting on - and this overlay exists precisely so that what
+ * the app is doing is legible.
+ */
+private const val MIN_CONFIDENCE = MIN_TRACKING_CONFIDENCE
 private const val JOINT_RADIUS = 7f
 private const val ARM_WIDTH = 12f
 private const val BODY_WIDTH = 10f

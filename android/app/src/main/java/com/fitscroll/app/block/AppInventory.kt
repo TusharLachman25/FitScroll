@@ -33,6 +33,9 @@ object AppInventory {
             .asSequence()
             .map { it.activityInfo.applicationInfo }
             .distinctBy { it.packageName }
+            // Our own id is asked for rather than listed: debug builds carry a
+            // suffix, and a hardcoded pair goes stale the moment either moves.
+            .filterNot { it.packageName == context.packageName }
             .filterNot { it.packageName in EXCLUDED_PACKAGES }
             .map { info ->
                 InstalledApp(
@@ -65,9 +68,6 @@ object AppInventory {
     private const val ICON_PX = 128
 
     private val EXCLUDED_PACKAGES = setOf(
-        // Blocking ourselves would put the lock screen behind the lock screen.
-        "com.fitscroll.app",
-        "com.fitscroll.app.debug",
         // Locking Settings would strand the user with no way to switch the
         // accessibility service back off.
         "com.android.settings",

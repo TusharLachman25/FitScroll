@@ -12,6 +12,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import com.fitscroll.app.MainActivity
 import com.fitscroll.app.data.BankRepository
 import com.fitscroll.app.data.Settings
@@ -110,13 +111,19 @@ class FitScrollAccessibilityService : AccessibilityService() {
         notifications = FitScrollNotifications(this)
         classifier = ForegroundClassifier(this).also { it.start() }
 
-        registerReceiver(
+        // Legal to omit the export flag today, because all three of these are
+        // protected system broadcasts. Named anyway: adding a fourth action
+        // that is not protected would throw here, and a SecurityException in
+        // onServiceConnected takes the blocking down without a word.
+        ContextCompat.registerReceiver(
+            this,
             screenReceiver,
             IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_USER_PRESENT)
             },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
         )
 
         reconcileInterruptedDrain()

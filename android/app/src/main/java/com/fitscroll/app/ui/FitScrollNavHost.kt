@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -15,6 +16,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.fitscroll.app.ui.theme.Ink
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 private object Route {
@@ -24,11 +26,30 @@ private object Route {
     const val APP_PICKER = "apps"
 }
 
+/**
+ * @param startOnWorkout the camera was asked for by the intent that built this
+ *   activity.
+ * @param workoutRequests the camera has been asked for since, by an intent that
+ *   reached an activity already running. Both paths exist because this is a
+ *   singleTask activity and the lock screen can reach it either way.
+ */
 @Composable
-fun FitScrollNavHost(startOnWorkout: Boolean) {
+fun FitScrollNavHost(
+    startOnWorkout: Boolean,
+    workoutRequests: StateFlow<Int>,
+) {
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(workoutRequests, navController) {
+        workoutRequests.collect { requests ->
+            // Zero is the initial value of the counter, not a request.
+            if (requests > 0) {
+                navController.navigate(Route.WORKOUT) { launchSingleTop = true }
+            }
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(Ink)) {
         NavHost(
