@@ -30,9 +30,13 @@ data class BankState(
  * one in-memory ledger keeps them consistent; re-reading preferences on every
  * one-second drain tick would not.
  *
- * Writes are flushed on every mutation rather than batched. The drain ticks
- * once a second, and batching would mean a process death mid-scroll silently
- * refunds screen time that was already spent.
+ * Writes go out on every mutation rather than being batched up. The drain
+ * ticks once a second, and holding them would mean a process death mid-scroll
+ * silently refunds screen time that was already spent. They are `apply()`
+ * rather than `commit()`, so the guarantee is "handed to the write queue", not
+ * "on disk" - a hard kill can still lose the most recent one. That is at most
+ * the last second of a drain, which is not worth a synchronous disk write on
+ * the main thread every second to avoid.
  */
 class BankRepository private constructor(context: Context) {
 
@@ -62,7 +66,11 @@ class BankRepository private constructor(context: Context) {
     fun refresh() = synchronized(lock) {
         val now = System.currentTimeMillis()
         val live = BankMath.purge(credits, now)
-        if (live.size != credits.size) {
+        // Compared by value rather than by size. Purging also pulls a
+        // future-stamped credit back to now, which leaves the count identical
+        // while changing what is owed - a size check would have kept that fix
+        // in memory and written the unclamped ledger back on the next mutation.
+        if (live != credits) {
             credits = live
             persistCredits()
         }

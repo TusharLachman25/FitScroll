@@ -218,4 +218,48 @@ class BankMathTest {
         val nextDay = now + 25 * hour
         assertEquals(0, BankMath.balanceSeconds(credits, nextDay))
     }
+
+    // ------------------------------------------------------ a moved clock
+
+    @Test
+    fun `a credit stamped in the future expires a day from now, not never`() {
+        // Winding the clock forward, banking, and winding it back leaves
+        // earnedAt ahead of now, so `now - earnedAt` is negative and sits under
+        // the 24h test for as long as the credit exists. Clamping bounds it to
+        // one ordinary day instead.
+        val fromTheFuture = listOf(Credit(earnedAt = now + 48 * hour, remainingSeconds = 600))
+
+        assertEquals(600, BankMath.balanceSeconds(fromTheFuture, now))
+        assertEquals(now + BankMath.EXPIRY_MILLIS, BankMath.nextExpiryAt(fromTheFuture, now))
+
+        val purged = BankMath.purge(fromTheFuture, now)
+        assertEquals(0, BankMath.balanceSeconds(purged, now + 25 * hour))
+    }
+
+    @Test
+    fun `a future credit is pulled back rather than thrown away`() {
+        // Losing the minutes outright would punish someone whose phone simply
+        // had the wrong time when they did the push-ups.
+        val purged = BankMath.purge(listOf(Credit(now + hour, 300)), now)
+
+        assertEquals(1, purged.size)
+        assertEquals(now, purged.single().earnedAt)
+        assertEquals(300, purged.single().remainingSeconds)
+    }
+
+    @Test
+    fun `clamping leaves ordinary credits untouched`() {
+        val credits = listOf(Credit(hoursAgo(3), 600), Credit(hoursAgo(20), 300))
+
+        assertEquals(credits, BankMath.purge(credits, now))
+    }
+
+    @Test
+    fun `a future credit is spent like any other`() {
+        val outcome = BankMath.spend(listOf(Credit(now + 10 * hour, 600)), seconds = 60, now = now)
+
+        assertEquals(60, outcome.spentSeconds)
+        assertEquals(540, outcome.credits.single().remainingSeconds)
+        assertEquals(now, outcome.credits.single().earnedAt)
+    }
 }

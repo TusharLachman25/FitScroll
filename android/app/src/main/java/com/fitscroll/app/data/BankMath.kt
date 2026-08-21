@@ -48,9 +48,21 @@ object BankMath {
     /** The exchange rate: one clean push-up buys one minute. */
     const val SECONDS_PER_REP: Int = 60
 
-    /** Drops credits that are fully spent or past their 24h window. */
+    /**
+     * Drops credits that are fully spent or past their 24h window.
+     *
+     * A credit stamped in the future is pulled back to now rather than trusted.
+     * Expiry is the one rule that rides the wall clock, and the wall clock is
+     * the one input a user can move: with `now - earnedAt` gone negative a
+     * credit stays under the 24h test forever, so a clock wound back once would
+     * mint minutes that never die. Clamping bounds that to a single ordinary
+     * day, and costs nothing in the case it is really guarding against - a
+     * phone whose clock was simply wrong when the credit was banked.
+     */
     fun purge(credits: List<Credit>, now: Long): List<Credit> =
-        credits.filter { it.remainingSeconds > 0 && now - it.earnedAt < EXPIRY_MILLIS }
+        credits
+            .map { if (it.earnedAt > now) it.copy(earnedAt = now) else it }
+            .filter { it.remainingSeconds > 0 && now - it.earnedAt < EXPIRY_MILLIS }
 
     /** Total spendable seconds right now. */
     fun balanceSeconds(credits: List<Credit>, now: Long): Int =
