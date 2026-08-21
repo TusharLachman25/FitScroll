@@ -76,7 +76,7 @@ import com.fitscroll.app.ui.theme.Lime
 import com.fitscroll.app.ui.theme.TextMuted
 import java.util.concurrent.Executors
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
  * The camera screen where minutes are earned.
@@ -148,9 +148,13 @@ fun WorkoutScreen(
     }
 
     // One buzz per counted rep, so you can keep your head down and still know
-    // it registered.
-    LaunchedEffect(state.reps) {
-        if (state.reps > 0) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+    // it registered. Driven off the counter's own signal rather than off the
+    // rep total changing, which could not tell a rep landing from the count
+    // being reset.
+    LaunchedEffect(viewModel, haptics) {
+        viewModel.repLanded.collect {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
     }
 
     Box(Modifier.fillMaxSize().background(Ink)) {
@@ -421,8 +425,18 @@ private fun CameraFeed(
     // "normally" is not a guarantee worth an ANR on a cold camera stack.
     val boundProvider = remember { mutableStateOf<ProcessCameraProvider?>(null) }
 
+    // A phone whose camera stack will not start is a dead end on the one screen
+    // the whole app exists to reach, so it gets said out loud rather than
+    // leaving a black rectangle and a rep counter that never moves.
+    var unavailable by remember { mutableStateOf(false) }
+
     LaunchedEffect(useFrontCamera) {
-        val provider = context.awaitCameraProvider()
+        unavailable = false
+
+        val provider = context.awaitCameraProvider().getOrElse {
+            unavailable = true
+            return@LaunchedEffect
+        }
         boundProvider.value = provider
 
         val preview = Preview.Builder().build()
@@ -439,10 +453,11 @@ private fun CameraFeed(
             if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA
             else CameraSelector.DEFAULT_BACK_CAMERA
 
-        runCatching {
+        val bound = runCatching {
             provider.unbindAll()
             provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
         }
+        unavailable = bound.isFailure
     }
 
     DisposableEffect(Unit) {
@@ -456,15 +471,51 @@ private fun CameraFeed(
         }
     }
 
-    AndroidView(factory = { previewView }, modifier = modifier)
+    if (unavailable) {
+        CameraUnavailable(modifier)
+    } else {
+        AndroidView(factory = { previewView }, modifier = modifier)
+    }
 }
 
-private suspend fun Context.awaitCameraProvider(): ProcessCameraProvider =
-    suspendCoroutine { continuation ->
-        ProcessCameraProvider.getInstance(this).also { future ->
-            future.addListener(
-                { continuation.resume(future.get()) },
-                ContextCompat.getMainExecutor(this),
-            )
-        }
+@Composable
+private fun CameraUnavailable(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "The camera would not start",
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color.White,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "Another app may still be holding it. Close anything using " +
+                "the camera, then come back to this screen.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = TextMuted,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/**
+ * Resolves the camera provider without letting a failure reach the main thread.
+ *
+ * `future.get()` throws when the camera stack cannot start, and it runs on the
+ * main executor - unwrapped, that exception takes the whole app down rather
+ * than this one screen. Cancellable so leaving mid-resolve stops waiting
+ * instead of stranding the continuation.
+ */
+private suspend fun Context.awaitCameraProvider(): Result<ProcessCameraProvider> =
+    suspendCancellableCoroutine { continuation ->
+        val future = ProcessCameraProvider.getInstance(this)
+        future.addListener(
+            { continuation.resume(runCatching { future.get() }) },
+            ContextCompat.getMainExecutor(this),
+        )
+        continuation.invokeOnCancellation { future.cancel(false) }
     }
