@@ -45,22 +45,3 @@ jobs:
         with:
           name: android-test-report
           path: android/app/build/reports/tests/
-
-  web:
-    name: PWA — bank and counter rules
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-
-      # The bank and counter are plain ES modules with no dependencies, so the
-      # built-in runner covers them without an install step.
-      - name: Rule tests
-        run: node --test

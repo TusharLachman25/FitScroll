@@ -56,27 +56,6 @@ cd android
 
 Release builds are signed with your local debug key on purpose. FitScroll is sideloaded rather than shipped through Play, so this keeps `assembleRelease` directly installable without a keystore ever entering the repository.
 
-### PWA
-
-```bash
-cd web
-node --test                     # 38 rule tests, no install step
-```
-
----
-
-## iPhone
-
-There's a PWA in [web/](web/) that gives you the push-up counter and the bank on iOS.
-
-**It cannot lock anything, and that is not a bug I can fix.** iOS gives third-party apps no way to see which app is in the foreground or to block one. The only sanctioned mechanism is Apple's Screen Time API (`FamilyControls`), whose entitlement needs a paid Apple Developer account *plus* individual approval from Apple, and is unavailable on a free personal team.
-
-What you get instead is a Shortcuts automation that opens FitScroll whenever Instagram launches, and time reconciled when you come back rather than metered live. That's real friction at the moment of the impulse — it's the same trick several commercial focus apps ship — but you can always swipe past it.
-
-Full walkthrough and the failure modes: **[docs/IOS_SETUP.md](docs/IOS_SETUP.md)**.
-
-The PWA deploys to GitHub Pages automatically **once this repo is public** — Pages can't serve a private repo on a Free plan, so the deploy job skips itself until then rather than failing on every push.
-
 ---
 
 ## Form strictness
@@ -113,17 +92,9 @@ If your legs are outside the frame the model *guesses* your knee position, so Fi
 
 ---
 
-## Repo layout
-
-```
-android/   Native Kotlin app — the real enforcement
-web/       PWA for iPhone — counter, bank, soft gate
-docs/      Setup guides, including the iOS Shortcuts automation
-```
-
 ## Tests
 
-76 tests, no device required. The bank and the rep counter are pure functions taking an explicit `now`, so every rule — expiry boundaries, oldest-first spending, cap overflow, each anti-cheat gate, and the noise tolerance that stops clean reps being thrown away — is pinned down on both platforms.
+38 tests, no device required. The bank and the rep counter are pure functions taking an explicit `now`, so every rule — expiry boundaries, oldest-first spending, cap overflow, each anti-cheat gate, and the noise tolerance that stops clean reps being thrown away — is pinned down.
 
 ## License
 
