@@ -39,4 +39,16 @@
         <item>Your thumb is in better shape than your triceps.</item>
         <item>Somebody out there is doing push-ups instead of reading this.</item>
     </string-array>
+
+    <!-- What FitScroll says while nobody is looking at its UI. -->
+    <string name="channel_drain">Screen time draining</string>
+    <string name="channel_drain_description">Shows your balance counting down while a locked app is open.</string>
+    <string name="channel_expiry">Minutes about to expire</string>
+    <string name="channel_expiry_description">Warns you before banked minutes are lost unspent.</string>
+
+    <string name="drain_title">%1$s left</string>
+    <string name="drain_text">Draining while %1$s is open</string>
+
+    <string name="expiry_title">%1$s expires within the hour</string>
+    <string name="expiry_text">Minutes die 24 hours after the push-ups that earned them.</string>
 </resources>

@@ -16,6 +16,7 @@ import com.fitscroll.app.MainActivity
 import com.fitscroll.app.data.BankRepository
 import com.fitscroll.app.data.Settings
 import com.fitscroll.app.data.SettingsRepository
+import com.fitscroll.app.notify.FitScrollNotifications
 
 /**
  * Watches which app is in front and enforces the bank against it.
@@ -39,12 +40,17 @@ class FitScrollAccessibilityService : AccessibilityService() {
     private lateinit var classifier: ForegroundClassifier
     private lateinit var drainStore: DrainStore
     private lateinit var power: PowerManager
+    private lateinit var notifications: FitScrollNotifications
 
     private val handler = Handler(Looper.getMainLooper())
 
     /** The blocked package currently being charged for, if any. */
     private var drainingPackage: String? = null
     private var warningShown = false
+
+    /** Cached so the readout can be updated without a PackageManager lookup. */
+    private var drainAppLabel: String = ""
+    private var lastDrainLabel: String? = null
 
     /** elapsedRealtime at the last charge, and the sub-second remainder of it. */
     private var lastChargedAt: Long = 0L
@@ -101,6 +107,7 @@ class FitScrollAccessibilityService : AccessibilityService() {
         keyguard = getSystemService(KeyguardManager::class.java)
         power = getSystemService(PowerManager::class.java)
         drainStore = DrainStore(this)
+        notifications = FitScrollNotifications(this)
         classifier = ForegroundClassifier(this).also { it.start() }
 
         registerReceiver(
@@ -209,17 +216,26 @@ class FitScrollAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(tick)
         handler.postDelayed(tick, TICK_MILLIS)
 
+        val label = formatRemaining(remainingSeconds)
+        drainAppLabel = AppInventory.labelFor(this, packageName)
+        lastDrainLabel = label
+
         // Opening with the balance makes the cost visible at the moment of the
-        // decision, which is the whole point of the app.
-        toast(formatRemaining(remainingSeconds) + " left")
+        // decision, which is the whole point of the app. The toast says it
+        // once; the notification keeps saying it for the whole session, which
+        // is the half a toast could never do.
+        toast("$label left")
+        notifications.showDraining(drainAppLabel, label)
     }
 
     private fun stopDrain() {
         drainingPackage = null
         warningShown = false
         carryMillis = 0L
+        lastDrainLabel = null
         handler.removeCallbacks(tick)
         drainStore.clear()
+        notifications.hideDraining()
     }
 
     /**
@@ -295,6 +311,15 @@ class FitScrollAccessibilityService : AccessibilityService() {
                 }
 
                 persistProgress(packageName, now)
+
+                // Redrawn only when the number visibly changes: once a minute
+                // for most of a session, once a second in the last minute,
+                // which is exactly when it is worth watching.
+                val label = formatRemaining(remaining)
+                if (label != lastDrainLabel) {
+                    lastDrainLabel = label
+                    notifications.showDraining(drainAppLabel, label)
+                }
 
                 if (settings.current.warnBeforeLock &&
                     !warningShown &&
