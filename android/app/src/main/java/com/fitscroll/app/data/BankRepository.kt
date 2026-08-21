@@ -185,6 +185,15 @@ class BankRepository private constructor(context: Context) {
         @Volatile
         private var instance: BankRepository? = null
 
+        /**
+         * Drops the singleton so a test can build one over fresh preferences.
+         *
+         * The ledger is process-wide on purpose - the service, the lock screen
+         * and the UI all spend the same balance - which also means it outlives
+         * a test method unless something says otherwise.
+         */
+        internal fun resetForTests() = synchronized(this) { instance = null }
+
         fun get(context: Context): BankRepository =
             instance ?: synchronized(this) {
                 instance ?: BankRepository(context).also { instance = it }
