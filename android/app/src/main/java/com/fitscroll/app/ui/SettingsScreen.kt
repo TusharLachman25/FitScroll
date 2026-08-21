@@ -31,6 +31,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,7 +42,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.fitscroll.app.block.AppInventory
 import com.fitscroll.app.block.BlockingStatus
 import com.fitscroll.app.data.BankRepository
@@ -74,6 +78,23 @@ fun SettingsScreen(
     val state by settings.state.collectAsStateWithLifecycle()
 
     var confirmClear by remember { mutableStateOf(false) }
+
+    // Both of these are granted in system Settings, somewhere this screen never
+    // sees, and reading them straight out of composition meant the rows still
+    // said "Off" after the user had just switched them on and come back. Read
+    // once per resume instead, which is the only moment either can change.
+    var accessibilityOn by remember {
+        mutableStateOf(BlockingStatus.isAccessibilityServiceEnabled(context))
+    }
+    var overlayOn by remember { mutableStateOf(BlockingStatus.canDrawOverlays(context)) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            accessibilityOn = BlockingStatus.isAccessibilityServiceEnabled(context)
+            overlayOn = BlockingStatus.canDrawOverlays(context)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -131,7 +152,7 @@ fun SettingsScreen(
         SectionLabel("Permissions")
         SettingRow(
             title = "Accessibility service",
-            subtitle = if (BlockingStatus.isAccessibilityServiceEnabled(context)) {
+            subtitle = if (accessibilityOn) {
                 "On — FitScroll can see which app is in front"
             } else {
                 "Off — nothing will be locked"
@@ -140,7 +161,7 @@ fun SettingsScreen(
         )
         SettingRow(
             title = "Display over other apps",
-            subtitle = if (BlockingStatus.canDrawOverlays(context)) {
+            subtitle = if (overlayOn) {
                 "On — the lock screen can open the camera for you"
             } else {
                 "Off — optional. Blocking still works; the lock's button just won't jump to the camera"
@@ -242,7 +263,7 @@ private fun StrictnessPicker(level: Int, onSelect: (Int) -> Unit) {
             text = "Bend past ${profile.downElbowAngle.toInt()}°, " +
                 "lock out past ${profile.upElbowAngle.toInt()}°, " +
                 "hold your body straighter than ${profile.minBodyLineAngle.toInt()}°, " +
-                "and take at least ${profile.minRepMillis / 100 / 10.0}s per rep.",
+                "and take at least ${formatPreciseSeconds(profile.minRepMillis)} per rep.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextMuted.copy(alpha = 0.7f),
         )

@@ -1,5 +1,6 @@
 package com.fitscroll.app.ui
 
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
@@ -13,6 +14,21 @@ fun formatBalance(seconds: Int): String = when {
     seconds <= 0 -> "0m"
     seconds < 60 -> "${seconds}s"
     else -> formatMinutes(seconds / 60)
+}
+
+/**
+ * Renders a short duration given in millis, e.g. "0.35s".
+ *
+ * Two decimal places, then trailing zeroes trimmed, so 350ms reads "0.35s"
+ * and 600ms reads "0.6s" rather than "0.60s". Locale-fixed because this is a
+ * number in a sentence about angles, not a formatted quantity, and a decimal
+ * comma next to a degree sign reads as a typo.
+ */
+fun formatPreciseSeconds(millis: Long): String {
+    val text = String.format(Locale.US, "%.2f", millis / 1000.0)
+        .trimEnd('0')
+        .trimEnd('.')
+    return "${text}s"
 }
 
 fun formatMinutes(minutes: Int): String {
