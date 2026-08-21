@@ -34,6 +34,7 @@ class FitScrollAccessibilityService : AccessibilityService() {
     private lateinit var settings: SettingsRepository
     private lateinit var lockOverlay: LockOverlay
     private lateinit var keyguard: KeyguardManager
+    private lateinit var classifier: ForegroundClassifier
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -48,6 +49,10 @@ class FitScrollAccessibilityService : AccessibilityService() {
      * going dark and coming back is not one. Without a remembered foreground,
      * the only route back into a drain is switching apps — which is exactly
      * what someone resuming an interrupted scroll does not do.
+     *
+     * Only ever written for a window that replaced the foreground app. A
+     * keyboard or a share sheet used to land here too, so unlocking the phone
+     * re-evaluated *that* package, found it unblocked, and left the meter off.
      */
     private var lastForegroundPackage: String? = null
 
@@ -85,6 +90,7 @@ class FitScrollAccessibilityService : AccessibilityService() {
         settings = SettingsRepository.get(this)
         lockOverlay = LockOverlay(this)
         keyguard = getSystemService(KeyguardManager::class.java)
+        classifier = ForegroundClassifier(this).also { it.start() }
 
         registerReceiver(
             screenReceiver,
@@ -99,13 +105,6 @@ class FitScrollAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val packageName = event.packageName?.toString() ?: return
-
-        // The notification shade and quick settings raise a window over the
-        // current app without replacing it. Treating that as an app switch
-        // would pause the drain every time the user glanced at a notification.
-        if (packageName in TRANSIENT_SYSTEM_PACKAGES) return
-
-        lastForegroundPackage = packageName
         onForegroundApp(packageName)
     }
 
@@ -113,6 +112,7 @@ class FitScrollAccessibilityService : AccessibilityService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         stopDrain()
+        classifier.stop()
         // Leaving a window behind when the service is switched off would cover
         // the whole phone with no way to reach the buttons.
         lockOverlay.hide()
@@ -142,32 +142,46 @@ class FitScrollAccessibilityService : AccessibilityService() {
     }
 
     private fun onForegroundApp(foreground: String) {
-        if (foreground == packageName) {
+        val action = BlockPolicy.decide(
+            foreground = foreground,
+            ownPackage = packageName,
+            blockedPackages = settings.current.blockedPackages,
+            isTransientWindow = classifier.isTransientWindow(foreground),
+            balanceSeconds = bank.balanceSeconds(),
+        )
+
+        // Returns before the remembered foreground is touched: a window that
+        // only covered the app must leave no trace of having been in front.
+        if (action is BlockAction.Ignore) return
+
+        lastForegroundPackage = foreground
+
+        when (action) {
+            is BlockAction.Ignore -> Unit
+
             // Our own UI. The overlay is deliberately left alone: it is our
             // window too, and on some devices attaching it reports FitScroll as
             // foreground, which would tear the lock down the instant it
             // appeared. The buttons hide it explicitly when they are used.
-            stopDrain()
-            return
-        }
+            is BlockAction.StandDown -> stopDrain()
 
-        if (foreground !in settings.current.blockedPackages) {
             // Swiping away to something else counts as backing off, so the lock
             // should not follow the user around on top of unrelated apps.
-            lockOverlay.hide()
-            stopDrain()
-            return
-        }
+            is BlockAction.Release -> {
+                lockOverlay.hide()
+                stopDrain()
+            }
 
-        val remaining = bank.balanceSeconds()
-        if (remaining <= 0) {
-            stopDrain()
-            lock(foreground)
-            return
-        }
+            is BlockAction.Drain -> {
+                lockOverlay.hide()
+                startDrain(action.packageName, action.remainingSeconds)
+            }
 
-        lockOverlay.hide()
-        startDrain(foreground, remaining)
+            is BlockAction.Lock -> {
+                stopDrain()
+                lock(action.packageName)
+            }
+        }
     }
 
     private fun startDrain(packageName: String, remainingSeconds: Int) {
@@ -289,9 +303,5 @@ class FitScrollAccessibilityService : AccessibilityService() {
     private companion object {
         const val TICK_MILLIS = 1_000L
         const val TICK_SECONDS = 1
-
-        val TRANSIENT_SYSTEM_PACKAGES = setOf(
-            "com.android.systemui",
-        )
     }
 }

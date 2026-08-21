@@ -16,14 +16,23 @@
         android:required="true" />
 
     <!--
-      Scoped package visibility for the blocked-app picker. This resolves only
-      apps with a launcher entry, rather than claiming QUERY_ALL_PACKAGES over
+      Scoped package visibility, rather than claiming QUERY_ALL_PACKAGES over
       everything installed.
+
+      LAUNCHER resolves the blocked-app picker, and doubles as the test for
+      whether a window that just appeared belongs to an app the user actually
+      switched to. HOME resolves the installed launchers, which is the other
+      half of that test - pressing home has to stop the meter, and a launcher
+      has no LAUNCHER entry of its own.
     -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
         </intent>
     </queries>
 
