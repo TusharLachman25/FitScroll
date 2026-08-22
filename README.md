@@ -12,7 +12,7 @@ FitScroll counts your push-ups with your phone's camera, banks each rep as one m
 |---|---|
 | **Earn** | Camera + on-device pose detection counts push-ups. 1 clean rep = 1 minute. |
 | **Bank** | Each minute expires exactly 24h after it was earned. Oldest minutes are spent first, so nothing evaporates that could have been used. |
-| **Spend** | While a blocked app is in the foreground, your balance drains in real time — one second per second, measured rather than counted in ticks. A notification carries the running balance for the whole session. |
+| **Spend** | While a blocked app is in the foreground, your balance drains in real time — one second per second, measured rather than counted in ticks. A notification carries the running balance for the whole session, counting down by the second so you can see it moving. |
 | **Lock** | At zero, a lock screen lands **on top of** the blocked app — mid-scroll, not just on open. Leaving it drops you to the home screen, so there's no way through it. |
 
 Everything that counts a rep or spends a minute runs on-device. No account, no sync, no analytics, and no camera frame ever leaves the phone.
@@ -37,6 +37,8 @@ Transfer to your phone and open it. You'll need to allow installing from unknown
 
 **Required.** Settings → Accessibility → FitScroll → On. This is how FitScroll knows which app is in front. It's declared `canRetrieveWindowContent="false"`, so it receives package names and *cannot* read the contents of any screen.
 
+It listens for two kinds of event. A **window-state change** says a window just took the screen, which is the only signal that an app switch happened at all. A **scroll** says a package is on screen right now — needed because the first only describes transitions: pull the notification shade down over Instagram and the app underneath never goes away, so nothing announces its return when the shade closes. FitScroll reads nothing off either event but the package name and the window class; a scroll event carries no text and no view contents.
+
 Two things get in the way on a sideloaded build, both by design on Android's part:
 
 - **Play Protect blocks the install.** Any app that can see the foreground app trips this. Play Store → profile → Play Protect → ⚙ → turn off scanning, install, turn it back on. (Installing over ADB skips this entirely.)
@@ -54,7 +56,7 @@ Needs JDK 17+ and the Android SDK (`ANDROID_HOME` set, or `android/local.propert
 
 ```bash
 cd android
-./gradlew testDebugUnitTest     # 88 unit tests
+./gradlew testDebugUnitTest     # 125 unit tests
 ./gradlew assembleRelease       # APKs in app/build/outputs/apk/release/
 ```
 
@@ -144,13 +146,17 @@ That compiles the notice URL to an empty string, and the gate never touches the 
 
 **Expiry rides the wall clock, and you own the wall clock.** Winding it back can't mint minutes — a credit stamped in the future is pulled back to now, so the worst it buys is one ordinary day — but nothing here pretends to be tamper-proof. See the first note.
 
+**Sometimes the meter has to guess, and it never guesses for long.** Android reports app switches, not a live answer to "what is on screen"; a service that gets killed mid-scroll, or a phone unlocked back into whatever it was showing, leaves FitScroll with a remembered package and no way to check it. It resumes on that guess — the alternative is free scrolling every time the process is recycled — but a guessed *drain* expires after 30 seconds unless something confirms it, so the most a wrong one can cost you is half a minute. Touch the feed and the first scroll settles it. A guessed *lock* is not put on the same clock, because the failures are not comparable: a drain that guessed wrong spends a bank silently, while a lock that guessed wrong is a screen in front of you with a button on it.
+
+**The balance counts in seconds below an hour.** Above it, hours and minutes. This is partly so a running meter is visibly running: a number that only moves once a minute looks identical whether the drain is working or stuck, which made every real bug in it hard to tell from an imagined one.
+
 ---
 
 ## Tests
 
-107 tests, no device required.
+125 tests, no device required.
 
-The rules live in pure functions taking an explicit `now` — the bank, the rep counter, the blocking decision, the drain reconciler — so expiry boundaries, oldest-first spending, cap overflow, every anti-cheat gate and the noise tolerance that stops clean reps being thrown away are all pinned down without a device or a 24-hour wait.
+The rules live in pure functions taking an explicit `now` — the bank, the rep counter, the blocking decision, the drain reconciler, the per-second meter — so expiry boundaries, oldest-first spending, cap overflow, every anti-cheat gate and the noise tolerance that stops clean reps being thrown away are all pinned down without a device or a 24-hour wait.
 
 The parts that genuinely need Android get Robolectric: the stored ledger, its reload, the day rollover, and the corrupt-ledger path that has to fail into an empty bank rather than a crash loop — because a crash loop would leave the accessibility service holding the block with no way to reach the camera.
 

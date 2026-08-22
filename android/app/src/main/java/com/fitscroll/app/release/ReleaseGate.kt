@@ -80,10 +80,21 @@ class ReleaseGate internal constructor(
     private val statusUrl: String,
     private val installedVersionCode: Int,
     private val fetch: suspend (String) -> String?,
+    /**
+     * Where the cached answer lives. Overridable for tests only.
+     *
+     * Not vanity: the application object kicks off a real check on every
+     * process start, and under Robolectric that lands in this file at whatever
+     * moment the network answers - after the test cleared it, and often after
+     * the test read it. Tests that had already stored an answer then found a
+     * fresh `checkedAt` sitting on top of it and were silently rate-limited out
+     * of their own second call. Each test gets its own file instead.
+     */
+    prefsName: String = PREFS_NAME,
 ) {
 
     private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
     private val _state = MutableStateFlow(load())
     val state: StateFlow<ReleaseStatus> = _state.asStateFlow()

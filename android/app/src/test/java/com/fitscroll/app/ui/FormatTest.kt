@@ -17,29 +17,45 @@ class FormatTest {
     // -------------------------------------------------------------- balance
 
     @Test
-    fun `an empty bank reads as zero minutes, not zero seconds`() {
-        assertEquals("0m", formatBalance(0))
-        assertEquals("0m", formatBalance(-30))
+    fun `an empty bank reads as zero`() {
+        assertEquals("0s", formatBalance(0))
+        assertEquals("0s", formatBalance(-30))
     }
 
     @Test
-    fun `under a minute is shown in seconds, because that is when the lock lands`() {
+    fun `under a minute is seconds alone`() {
         assertEquals("45s", formatBalance(45))
         assertEquals("59s", formatBalance(59))
     }
 
     @Test
-    fun `a minute and over drops the seconds`() {
-        assertEquals("1m", formatBalance(60))
-        assertEquals("1m", formatBalance(119))
-        assertEquals("2m", formatBalance(120))
+    fun `under an hour keeps the seconds, so a live drain can be seen moving`() {
+        // The seconds used to be dropped above a minute, which made a running
+        // meter and a stuck one look identical for a minute at a time.
+        assertEquals("1m 00s", formatBalance(60))
+        assertEquals("1m 59s", formatBalance(119))
+        assertEquals("2m 00s", formatBalance(120))
+        assertEquals("59m 59s", formatBalance(3_599))
     }
 
     @Test
-    fun `hours are split out once there are any`() {
-        assertEquals("1h", formatBalance(3_600))
+    fun `the seconds are padded so a ticking balance holds its width`() {
+        assertEquals("3m 07s", formatBalance(187))
+        assertEquals("3m 00s", formatBalance(180))
+    }
+
+    @Test
+    fun `an hour and over reads as hours and minutes`() {
+        assertEquals("1h 0m", formatBalance(3_600))
         assertEquals("1h 1m", formatBalance(3_660))
-        assertEquals("24h", formatBalance(86_400))
+        assertEquals("2h 15m", formatBalance(8_100))
+        assertEquals("24h 0m", formatBalance(86_400))
+    }
+
+    @Test
+    fun `the hour boundary is exactly where the seconds stop`() {
+        assertEquals("59m 59s", formatBalance(3_599))
+        assertEquals("1h 0m", formatBalance(3_600))
     }
 
     @Test

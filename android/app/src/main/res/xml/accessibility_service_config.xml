@@ -4,11 +4,30 @@
   name of whatever comes to the front, which arrives on the event itself, so it
   never requests the ability to read the contents of any screen.
 
+  Two event types, for two different questions:
+
+    typeWindowStateChanged  - a window just took the screen. The only signal
+                              that an app switch happened at all.
+    typeViewScrolled        - a package is on screen right now. Needed because
+                              the first only describes transitions: anything
+                              that covers a blocked app without replacing it,
+                              the notification shade above all, leaves the app
+                              underneath untouched and raises no event when it
+                              goes away. Without this the meter stopped on the
+                              way past and never started again.
+
+  A scroll event carries a package name, a scroll offset and an item count. It
+  carries no text and no view contents, so listening for it does not widen what
+  FitScroll can see - and nothing here reads anything off an event but the
+  package name and the window class.
+
   notificationTimeout is 0 so no window change is coalesced away - the whole
-  point is to react on the frame a blocked app appears.
+  point is to react on the frame a blocked app appears. Scrolls arrive far
+  faster than that and are throttled in code instead, because raising this
+  would delay the block as well.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeViewScrolled"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:canRetrieveWindowContent="false"
     android:description="@string/accessibility_service_description"

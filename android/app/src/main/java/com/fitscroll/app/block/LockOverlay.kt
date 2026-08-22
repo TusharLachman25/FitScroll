@@ -108,9 +108,17 @@ class LockOverlay(private val service: AccessibilityService) {
         }
     }
 
+    /**
+     * Takes the window down, and only forgets it if that worked.
+     *
+     * Dropping the reference first meant a failed removal stranded the overlay
+     * on screen covering the whole phone, with nothing left holding the view to
+     * try again. A window that is already detached throws too, which is the
+     * benign case - hence the recheck rather than trusting the result.
+     */
     fun hide() {
         val current = view ?: return
-        view = null
-        runCatching { windowManager.removeView(current) }
+        val removed = runCatching { windowManager.removeView(current) }.isSuccess
+        if (removed || !current.isAttachedToWindow) view = null
     }
 }

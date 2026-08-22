@@ -1,6 +1,7 @@
 package com.fitscroll.app.block
 
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -10,6 +11,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
 import androidx.core.content.ContextCompat
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,14 +29,26 @@ import kotlinx.coroutines.launch
  * stopped the meter and hid the lock — so typing a comment on Instagram was
  * free, and so was opening the share sheet.
  *
- * A real app switch is narrower than it looks: the user can only move to
- * something with a launcher icon, or to their home screen. Everything else that
- * flashes a window over the top is transient by definition, so that is the test
- * used here.
+ * A real app switch is narrower than it looks, and it takes two tests rather
+ * than one:
  *
- * The lookup is cached because it runs on every window event. Until the first
- * refresh lands nothing is treated as transient, which degrades to the old
- * behaviour rather than to an unmetered blocked app.
+ *  1. **Whose window is it.** The user can only move to something with a
+ *     launcher icon, or to their home screen. Everything else that flashes a
+ *     window over the top is transient by definition.
+ *
+ *  2. **Is it an activity.** A launchable app can raise a window that is not an
+ *     app switch either — a heads-up notification, a media control, a home
+ *     screen widget expanding, an OEM surface inside the notification shade.
+ *     Those report a *view* class where an activity would report its own class
+ *     name, so asking the package manager to resolve the two as a component
+ *     separates them. This is the test that stops pulling the shade down and
+ *     closing it again from killing a live drain: the meter would stop on the
+ *     way past, and since the app underneath never went away it raised no
+ *     window event when the shade closed, so nothing ever started it again.
+ *
+ * Both lookups are cached because they run on every window event. Until the
+ * first refresh lands nothing is treated as transient, which degrades to the
+ * old behaviour rather than to an unmetered blocked app.
  */
 class ForegroundClassifier(private val context: Context) {
 
@@ -53,6 +67,9 @@ class ForegroundClassifier(private val context: Context) {
     /** False until the first scan lands, so an empty cache never hides an app. */
     @Volatile
     private var ready: Boolean = false
+
+    /** Whether `package/class` resolves to a real activity. Bounded. */
+    private val activityCache = ConcurrentHashMap<String, Boolean>()
 
     private val packageWatcher = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) = refresh()
@@ -103,12 +120,50 @@ class ForegroundClassifier(private val context: Context) {
     /**
      * True when this window is sitting on top of the real foreground app rather
      * than replacing it.
+     *
+     * @param className the window class the event reported, or null to skip the
+     *   activity test. Null is passed for two quite different reasons: an event
+     *   that carries no window class at all (a scroll, which says a package is
+     *   on screen rather than that it just arrived), and any moment when no
+     *   blocked app is actually being enforced. The activity test only ever
+     *   protects a session in progress. Outside one, a class that fails to
+     *   resolve — an alias, an odd embedding, something this misreads — would
+     *   turn into a lock screen left sitting over an innocent app, and being
+     *   wrong that way is worse than the leak the test is closing.
      */
-    fun isTransientWindow(packageName: String): Boolean {
+    fun isTransientWindow(packageName: String, className: String? = null): Boolean {
         if (packageName in SYSTEM_UI_PACKAGES) return true
         if (!ready) return false
         if (packageName in imePackages) return true
-        return packageName !in launchablePackages && packageName !in homePackages
+
+        // Checked before the activity test and never subjected to it. Pressing
+        // home has to stop the meter whatever the launcher calls its window.
+        if (packageName in homePackages) return false
+
+        if (packageName !in launchablePackages) return true
+
+        return className != null && !resolvesToActivity(packageName, className)
+    }
+
+    /**
+     * Whether `package/class` names an activity rather than a view.
+     *
+     * A miss is cached alongside a hit: the windows this is asked about are a
+     * small, repeating set — one app's dialog, one launcher's widget host — and
+     * re-asking the package manager about each of them on every event is a
+     * binder round trip on the main thread.
+     */
+    private fun resolvesToActivity(packageName: String, className: String): Boolean {
+        val key = "$packageName/$className"
+        activityCache[key]?.let { return it }
+
+        val resolved = runCatching {
+            context.packageManager.getActivityInfo(ComponentName(packageName, className), 0)
+            true
+        }.getOrDefault(false)
+
+        if (activityCache.size < ACTIVITY_CACHE_LIMIT) activityCache[key] = resolved
+        return resolved
     }
 
     private fun refresh() {
@@ -145,6 +200,8 @@ class ForegroundClassifier(private val context: Context) {
             launchablePackages = launchable
             homePackages = home
             imePackages = imes
+            // An app that was updated may have renamed or dropped an activity.
+            activityCache.clear()
             ready = true
         }
     }
@@ -158,5 +215,8 @@ class ForegroundClassifier(private val context: Context) {
         val SYSTEM_UI_PACKAGES = setOf(
             "com.android.systemui",
         )
+
+        /** Plenty for the handful of windows a phone actually cycles through. */
+        const val ACTIVITY_CACHE_LIMIT = 256
     }
 }

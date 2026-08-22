@@ -36,18 +36,30 @@ object DrainMath {
 }
 
 /**
- * Remembers which app was being charged for, so an interrupted drain is not
- * simply forgotten.
+ * The two things about the current session that have to outlive the process.
  *
- * Written on a timer rather than on every tick. The record only has to be
- * accurate to within the interval, because what it feeds is capped anyway, and
- * the alternative is a second file rewrite every single second on top of the
- * ledger's.
+ * **The pending drain** is which app was being charged for, so an interrupted
+ * one is not simply forgotten. Written on a timer rather than on every tick:
+ * the record only has to be accurate to within the interval, because what it
+ * feeds is capped anyway, and the alternative is a second file rewrite every
+ * single second on top of the ledger's.
+ *
+ * **The remembered foreground** is whatever last took the screen, drain or no
+ * drain. It used to live only in memory, which defeated the one job it has.
+ * Window-state events describe *transitions*, so unlocking straight back into
+ * the app that was already in front raises no event for it and the meter has
+ * nothing to react to — the remembered package is the only way back into a
+ * drain. Process death is both common and exactly when that recovery is needed,
+ * and an in-memory field is gone by then: scroll Instagram, lock the phone, let
+ * Android reclaim the process overnight, and the morning's scrolling was free
+ * until the user happened to switch apps. It survives on disk now.
  */
 class DrainStore(context: Context) {
 
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    // ------------------------------------------------------- pending drain
 
     fun record(packageName: String, lastChargedAtWall: Long) {
         prefs.edit()
@@ -68,9 +80,27 @@ class DrainStore(context: Context) {
         prefs.edit().remove(KEY_PACKAGE).remove(KEY_LAST_CHARGED).apply()
     }
 
+    // -------------------------------------------------- remembered foreground
+
+    /**
+     * Notes what is in front now.
+     *
+     * Deliberately *not* cleared when a drain stops. A drain stopping is the
+     * ordinary case — the screen went off — and that is precisely the moment
+     * the remembered package becomes load-bearing, because the way back is an
+     * unlock rather than an app switch. Only a different app taking the screen
+     * replaces it.
+     */
+    fun rememberForeground(packageName: String) {
+        prefs.edit().putString(KEY_FOREGROUND, packageName).apply()
+    }
+
+    fun lastForeground(): String? = prefs.getString(KEY_FOREGROUND, null)
+
     private companion object {
         const val PREFS_NAME = "fitscroll_drain"
         const val KEY_PACKAGE = "package"
         const val KEY_LAST_CHARGED = "last_charged_at"
+        const val KEY_FOREGROUND = "last_foreground"
     }
 }

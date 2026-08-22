@@ -7,7 +7,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TestName
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -38,16 +40,34 @@ class ReleaseGateTest {
         }
     }
 
+    /**
+     * A gate over storage nothing else can reach.
+     *
+     * The name is fixed per test method rather than global: several of these
+     * build a second gate over the *same* file on purpose, to stand in for a
+     * cold start reading back what the first one wrote.
+     */
     private fun gate(host: FakeHost, versionCode: Int = 5, statusUrl: String = url) =
-        ReleaseGate(context, statusUrl, versionCode, host.fetch)
+        ReleaseGate(context, statusUrl, versionCode, host.fetch, prefsName = prefsName)
 
     private fun notice(minVersionCode: Int, message: String = "gone") =
         """{"minVersionCode":$minVersionCode,"message":"$message","updateUrl":"https://play.example/app"}"""
 
+    /** Unique per test method, so no two share a cache. */
+    private lateinit var prefsName: String
+
+    @Rule
+    @JvmField
+    val testName = TestName()
+
     @Before
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
-        context.getSharedPreferences("fitscroll_release", Context.MODE_PRIVATE)
+        // Deliberately not the real file. The application object starts a live
+        // check on process start, and clearing the shared one here only wins a
+        // race it does not have to enter.
+        prefsName = "fitscroll_release_test_${testName.methodName.hashCode()}"
+        context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
             .edit().clear().commit()
         ReleaseGate.resetForTests()
     }

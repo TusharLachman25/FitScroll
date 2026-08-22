@@ -28,7 +28,15 @@ class FitScrollApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        FitScrollNotifications(this).ensureChannels()
+        FitScrollNotifications(this).apply {
+            ensureChannels()
+            // The drain readout is ongoing, so nothing takes it down but the
+            // drain stopping - and a killed process never gets to say so. It
+            // sat there afterwards claiming a session that had died with the
+            // process, un-dismissable below Android 14. Any process start means
+            // no drain is running yet, so this is always the truth.
+            hideDraining()
+        }
 
         // Checked once per process start, rate-limited inside the gate. Failing
         // to reach it leaves the previous answer standing, so this can be
