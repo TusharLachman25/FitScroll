@@ -14,6 +14,14 @@ data class Settings(
     val strictness: Int = DEFAULT_STRICTNESS,
     /** Whether to warn shortly before the balance runs out. */
     val warnBeforeLock: Boolean = true,
+    /**
+     * Whether the one-time notification permission prompt has been shown.
+     *
+     * Asked once and never again. Notifications are a nicety here - the lock
+     * screen and the toasts work without them - and an app about self-control
+     * that nags for permissions on every launch has picked the wrong fight.
+     */
+    val notificationsRequested: Boolean = false,
 ) {
     companion object {
         const val INSTAGRAM_PACKAGE = "com.instagram.android"
@@ -41,6 +49,8 @@ class SettingsRepository private constructor(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    private val ownPackage = context.applicationContext.packageName
+
     private val _state = MutableStateFlow(load())
     val state: StateFlow<Settings> = _state.asStateFlow()
 
@@ -48,8 +58,9 @@ class SettingsRepository private constructor(context: Context) {
 
     fun setBlockedPackages(packages: Set<String>) = update {
         // Blocking ourselves would make the lock screen unreachable and leave
-        // the only escape hatch in Android's own settings.
-        it.copy(blockedPackages = packages - OWN_PACKAGE_PREFIXES)
+        // the only escape hatch in Android's own settings. Asked for rather
+        // than hardcoded, since the debug build carries a suffix.
+        it.copy(blockedPackages = packages - ownPackage)
     }
 
     fun setBankCapMinutes(minutes: Int) = update {
@@ -65,6 +76,8 @@ class SettingsRepository private constructor(context: Context) {
 
     fun setWarnBeforeLock(enabled: Boolean) = update { it.copy(warnBeforeLock = enabled) }
 
+    fun markNotificationsRequested() = update { it.copy(notificationsRequested = true) }
+
     private fun update(transform: (Settings) -> Settings) {
         val next = transform(_state.value)
         prefs.edit()
@@ -72,6 +85,7 @@ class SettingsRepository private constructor(context: Context) {
             .putInt(KEY_CAP_MINUTES, next.bankCapMinutes)
             .putInt(KEY_STRICTNESS, next.strictness)
             .putBoolean(KEY_WARN, next.warnBeforeLock)
+            .putBoolean(KEY_NOTIFICATIONS_ASKED, next.notificationsRequested)
             .apply()
         _state.value = next
     }
@@ -86,6 +100,10 @@ class SettingsRepository private constructor(context: Context) {
             bankCapMinutes = prefs.getInt(KEY_CAP_MINUTES, defaults.bankCapMinutes),
             strictness = prefs.getInt(KEY_STRICTNESS, defaults.strictness),
             warnBeforeLock = prefs.getBoolean(KEY_WARN, defaults.warnBeforeLock),
+            notificationsRequested = prefs.getBoolean(
+                KEY_NOTIFICATIONS_ASKED,
+                defaults.notificationsRequested,
+            ),
         )
     }
 
@@ -95,11 +113,7 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_CAP_MINUTES = "bank_cap_minutes"
         private const val KEY_STRICTNESS = "strictness"
         private const val KEY_WARN = "warn_before_lock"
-
-        private val OWN_PACKAGE_PREFIXES = setOf(
-            "com.fitscroll.app",
-            "com.fitscroll.app.debug",
-        )
+        private const val KEY_NOTIFICATIONS_ASKED = "notifications_requested"
 
         @Volatile
         private var instance: SettingsRepository? = null

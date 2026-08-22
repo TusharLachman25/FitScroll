@@ -14,6 +14,8 @@ package com.fitscroll.app.pose
  *  - [minRepMillis]     the floor on rep duration, which is what stops someone
  *                       waving an arm past the camera and banking a week of
  *                       screen time in thirty seconds
+ *  - [minShoulderTravelRatio] how far the body itself has to move, which is
+ *                       what stops an arm bent in front of the lens counting
  *
  * Note what is deliberately *not* here: tracking confidence. That lives in
  * [MIN_TRACKING_CONFIDENCE] at a single value for every level. Scaling it with
@@ -51,6 +53,24 @@ data class StrictnessProfile(
      */
     val formGraceMillis: Long,
     val minRepMillis: Long,
+    /**
+     * How far the shoulders must drop during a rep, as a fraction of the
+     * athlete's own shoulder-to-hip length.
+     *
+     * This is the gate that makes a rep a push-up rather than an arm movement.
+     * Angles alone cannot tell the difference: stand up, hold the phone in
+     * front of you and curl, and the elbow crosses both thresholds with a
+     * dead-straight body line to go with it. A push-up drops the shoulders by
+     * something close to the length of the upper arm; a curl leaves them
+     * exactly where they were.
+     *
+     * Kept well under what a textbook rep achieves for the same reason the
+     * other numbers are: this is a 2D estimate, and a lens that is not square
+     * on foreshortens the drop. It only has to separate real movement from
+     * none, so it is set to be trivially cleared by anyone actually on the
+     * floor.
+     */
+    val minShoulderTravelRatio: Float,
 ) {
     companion object {
 
@@ -64,6 +84,7 @@ data class StrictnessProfile(
                 minBodyLineAngle = 100f,
                 formGraceMillis = 1_500L,
                 minRepMillis = 350L,
+                minShoulderTravelRatio = 0.20f,
             ),
             StrictnessProfile(
                 level = 2,
@@ -74,6 +95,7 @@ data class StrictnessProfile(
                 minBodyLineAngle = 116f,
                 formGraceMillis = 1_100L,
                 minRepMillis = 450L,
+                minShoulderTravelRatio = 0.25f,
             ),
             StrictnessProfile(
                 level = 3,
@@ -84,6 +106,7 @@ data class StrictnessProfile(
                 minBodyLineAngle = 128f,
                 formGraceMillis = 800L,
                 minRepMillis = 600L,
+                minShoulderTravelRatio = 0.30f,
             ),
             StrictnessProfile(
                 level = 4,
@@ -94,6 +117,7 @@ data class StrictnessProfile(
                 minBodyLineAngle = 138f,
                 formGraceMillis = 550L,
                 minRepMillis = 750L,
+                minShoulderTravelRatio = 0.35f,
             ),
             StrictnessProfile(
                 level = 5,
@@ -104,6 +128,7 @@ data class StrictnessProfile(
                 minBodyLineAngle = 148f,
                 formGraceMillis = 350L,
                 minRepMillis = 900L,
+                minShoulderTravelRatio = 0.40f,
             ),
         )
 

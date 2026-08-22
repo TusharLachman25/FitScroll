@@ -45,6 +45,33 @@ data class PoseMetrics(
      * judge form at all when this is low rather than failing the rep.
      */
     val bodyConfidence: Float,
+    /**
+     * Vertical position of the shoulders in the rotated image, in pixels, where
+     * y grows downwards.
+     *
+     * Carried because the angles alone cannot tell a push-up from an arm bent
+     * in front of the lens: someone standing up with their arms by their sides
+     * presents a locked-out elbow and a straight shoulder-hip-knee line, and
+     * curling an arm walks that elbow through both thresholds. What separates
+     * the two is that a push-up moves the whole body and a curl does not.
+     */
+    val shoulderY: Float = 0f,
+    /**
+     * Shoulder-to-hip distance in pixels: the yardstick shoulder travel is
+     * measured against.
+     *
+     * A ratio rather than an absolute drop, because pixels mean nothing on
+     * their own - the same push-up is half the size from twice the distance.
+     */
+    val torsoLength: Float = 0f,
+    /**
+     * Lowest likelihood across shoulder and hip, 0..1.
+     *
+     * Separate from [bodyConfidence], which also needs the knee. Propping the
+     * phone close enough to leave the legs out of frame is an ordinary way to
+     * film a push-up, and the torso is still perfectly visible when it happens.
+     */
+    val torsoConfidence: Float = 0f,
 )
 
 object Geometry {

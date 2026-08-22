@@ -36,9 +36,17 @@ class LockOverlay(private val service: AccessibilityService) {
 
     val isShowing: Boolean get() = view != null
 
+    /**
+     * @param canLaunchCamera whether the service may start an activity from
+     *   here. Without the overlay permission Android drops a background
+     *   activity launch on the floor, so the primary button would appear to do
+     *   nothing at all; when that is the case it says what it can actually
+     *   deliver instead of making a promise the system will refuse.
+     */
     fun show(
         appLabel: String,
         balanceLabel: String,
+        canLaunchCamera: Boolean,
         onEarn: () -> Unit,
         onDismiss: () -> Unit,
     ) {
@@ -46,16 +54,20 @@ class LockOverlay(private val service: AccessibilityService) {
 
         val themed = ContextThemeWrapper(service, R.style.Theme_FitScroll)
         val root = LayoutInflater.from(themed).inflate(R.layout.overlay_lock, null)
+        val resources = themed.resources
 
-        root.findViewById<TextView>(R.id.lock_title).text = "$appLabel is locked"
-        root.findViewById<TextView>(R.id.lock_roast).text = ROASTS.random()
+        root.findViewById<TextView>(R.id.lock_title).text =
+            resources.getString(R.string.lock_title, appLabel)
+        root.findViewById<TextView>(R.id.lock_roast).text =
+            resources.getStringArray(R.array.lock_roasts).random()
         root.findViewById<TextView>(R.id.lock_balance).text = balanceLabel
-        root.findViewById<TextView>(R.id.lock_rate).text =
-            "One push-up buys one minute.\nEvery minute you bank lasts 24 hours."
 
-        root.findViewById<Button>(R.id.lock_earn).setOnClickListener {
-            hide()
-            onEarn()
+        root.findViewById<Button>(R.id.lock_earn).apply {
+            setText(if (canLaunchCamera) R.string.lock_earn else R.string.lock_earn_manual)
+            setOnClickListener {
+                hide()
+                onEarn()
+            }
         }
         root.findViewById<Button>(R.id.lock_dismiss).setOnClickListener {
             hide()
@@ -100,29 +112,5 @@ class LockOverlay(private val service: AccessibilityService) {
         val current = view ?: return
         view = null
         runCatching { windowManager.removeView(current) }
-    }
-
-    private companion object {
-        /**
-         * Shown one at a time on the lock screen.
-         *
-         * Aimed at the decision rather than the person: the point is to make
-         * the trade visible at the moment it is being made, not to make anyone
-         * feel worse about their body.
-         */
-        val ROASTS = listOf(
-            "The feed will still be there in twenty push-ups.",
-            "You wrote these rules. Past you was sharper than present you.",
-            "Zero banked. The floor is right there.",
-            "You have time to scroll, but not to push. Interesting.",
-            "Twenty reps is ninety seconds. You have spent longer picking a filter.",
-            "You are not blocked. You are just broke.",
-            "Currency: push-ups. Balance: nothing. Do the maths.",
-            "The algorithm has not missed you. Your chest has.",
-            "This is the part where you get down on the floor. Or give up.",
-            "Nothing in the bank, nothing on the screen. That was the deal.",
-            "Your thumb is in better shape than your triceps.",
-            "Somebody out there is doing push-ups instead of reading this.",
-        )
     }
 }

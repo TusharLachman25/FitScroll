@@ -6,6 +6,12 @@
   WindowManager overlay needs lifecycle, saved-state and view-model owners
   wired up by hand, and a crash in an accessibility service is the worst place
   in the app for one - it takes the blocking with it.
+
+  The column scrolls. It is centred and only as tall as it needs to be, so on
+  an ordinary screen nothing moves - but at a large system font scale, or on a
+  short screen, the buttons used to sit below the bottom edge of a window that
+  covers the entire phone. The primary action being unreachable is not a
+  cosmetic problem here.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -14,111 +20,118 @@
     android:clickable="true"
     android:focusable="true">
 
-    <LinearLayout
+    <ScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:gravity="center_horizontal"
-        android:orientation="vertical"
-        android:paddingHorizontal="32dp"
-        android:paddingVertical="48dp">
-
-        <FrameLayout
-            android:layout_width="96dp"
-            android:layout_height="96dp"
-            android:background="@drawable/bg_lock_icon_circle">
-
-            <ImageView
-                android:layout_width="42dp"
-                android:layout_height="42dp"
-                android:layout_gravity="center"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_lock_shield" />
-        </FrameLayout>
-
-        <TextView
-            android:id="@+id/lock_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="26dp"
-            android:gravity="center"
-            android:letterSpacing="-0.02"
-            android:textColor="#EDF2F7"
-            android:textSize="27sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/lock_roast"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:gravity="center"
-            android:lineSpacingExtra="4sp"
-            android:textColor="#FBBF24"
-            android:textSize="17sp" />
+        android:scrollbars="none">
 
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="26dp"
-            android:background="@drawable/bg_stat_chip"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingHorizontal="18dp"
-            android:paddingVertical="12dp">
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingHorizontal="32dp"
+            android:paddingVertical="48dp">
+
+            <FrameLayout
+                android:layout_width="96dp"
+                android:layout_height="96dp"
+                android:background="@drawable/bg_lock_icon_circle">
+
+                <ImageView
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_lock_shield" />
+            </FrameLayout>
 
             <TextView
-                android:id="@+id/lock_balance"
+                android:id="@+id/lock_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="0m"
-                android:textColor="#F43F5E"
-                android:textSize="19sp"
+                android:layout_marginTop="26dp"
+                android:gravity="center"
+                android:letterSpacing="-0.02"
+                android:textColor="#EDF2F7"
+                android:textSize="27sp"
                 android:textStyle="bold" />
 
             <TextView
+                android:id="@+id/lock_roast"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="banked"
+                android:layout_marginTop="14dp"
+                android:gravity="center"
+                android:lineSpacingExtra="4sp"
+                android:textColor="#FBBF24"
+                android:textSize="17sp" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="26dp"
+                android:background="@drawable/bg_stat_chip"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="18dp"
+                android:paddingVertical="12dp">
+
+                <TextView
+                    android:id="@+id/lock_balance"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0m"
+                    android:textColor="#F43F5E"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/lock_banked"
+                    android:textColor="#94A3B8"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/lock_rate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:gravity="center"
+                android:lineSpacingExtra="3sp"
+                android:text="@string/lock_rate"
+                android:textColor="#94A3B8"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/lock_earn"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="match_parent"
+                android:layout_height="58dp"
+                android:layout_marginTop="34dp"
+                android:background="@drawable/bg_button_primary"
+                android:letterSpacing="0.02"
+                android:text="@string/lock_earn"
+                android:textAllCaps="false"
+                android:textColor="#0B0F14"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/lock_dismiss"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="6dp"
+                android:text="@string/lock_dismiss"
+                android:textAllCaps="false"
                 android:textColor="#94A3B8"
                 android:textSize="15sp" />
         </LinearLayout>
-
-        <TextView
-            android:id="@+id/lock_rate"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:gravity="center"
-            android:lineSpacingExtra="3sp"
-            android:textColor="#94A3B8"
-            android:textSize="14sp" />
-
-        <Button
-            android:id="@+id/lock_earn"
-            style="?android:attr/borderlessButtonStyle"
-            android:layout_width="match_parent"
-            android:layout_height="58dp"
-            android:layout_marginTop="34dp"
-            android:background="@drawable/bg_button_primary"
-            android:letterSpacing="0.02"
-            android:text="Drop and earn minutes"
-            android:textAllCaps="false"
-            android:textColor="#0B0F14"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/lock_dismiss"
-            style="?android:attr/borderlessButtonStyle"
-            android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:layout_marginTop="6dp"
-            android:text="Not now"
-            android:textAllCaps="false"
-            android:textColor="#94A3B8"
-            android:textSize="15sp" />
-    </LinearLayout>
+    </ScrollView>
 
 </FrameLayout>

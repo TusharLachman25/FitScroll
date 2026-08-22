@@ -12,8 +12,11 @@ import com.fitscroll.app.pose.PushUpCounter
 import com.fitscroll.app.pose.RepPhase
 import com.fitscroll.app.pose.SkeletonFrame
 import com.fitscroll.app.pose.StrictnessProfile
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 data class WorkoutUiState(
@@ -45,6 +48,18 @@ class WorkoutViewModel(application: Application) : AndroidViewModel(application)
     val state: StateFlow<WorkoutUiState> = _state.asStateFlow()
 
     /**
+     * Fires once for each rep that lands, so the screen can buzz.
+     *
+     * An event rather than a field on the UI state. The counter raises
+     * repJustCounted for exactly one frame, and UI state is conflated - a flag
+     * that brief can be superseded before anything recomposes, and the buzz
+     * would silently go missing under load. Buffered so a rep landing between
+     * collections is delivered late rather than dropped.
+     */
+    private val _repLanded = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+    val repLanded: SharedFlow<Unit> = _repLanded.asSharedFlow()
+
+    /**
      * Called from the camera analysis thread for every frame.
      *
      * Rep timing uses elapsedRealtime rather than wall-clock time. A user
@@ -58,6 +73,7 @@ class WorkoutViewModel(application: Application) : AndroidViewModel(application)
         counter.setProfile(StrictnessProfile.forLevel(settings.current.strictness))
 
         val update = counter.onFrame(result.metrics, SystemClock.elapsedRealtime())
+        if (update.repJustCounted) _repLanded.tryEmit(Unit)
 
         _state.value = _state.value.copy(
             reps = update.reps,

@@ -379,4 +379,106 @@ class PushUpCounterTest {
         assertEquals(0, counter.reps)
         assertEquals(RepPhase.SEARCHING, counter.onFrame(null, 0L).phase)
     }
+
+    // --------------------------------------------- did the body move at all
+
+    private fun travelMetrics(
+        elbow: Float,
+        shoulderY: Float,
+        torsoLength: Float,
+        torsoConfidence: Float,
+    ) = PoseMetrics(
+        elbowAngle = elbow,
+        bodyLineAngle = 180f,
+        confidence = 0.9f,
+        bodyConfidence = 0.9f,
+        shoulderY = shoulderY,
+        torsoLength = torsoLength,
+        torsoConfidence = torsoConfidence,
+    )
+
+    /** A held pose that also reports where the shoulders are. */
+    private fun PushUpCounter.travelHold(
+        elbow: Float,
+        shoulderY: Float,
+        startAt: Long,
+        durationMillis: Long,
+        torsoLength: Float,
+        torsoConfidence: Float,
+    ): Long {
+        var t = startAt
+        val end = startAt + durationMillis
+        while (t <= end) {
+            onFrame(travelMetrics(elbow, shoulderY, torsoLength, torsoConfidence), t)
+            t += frameMillis
+        }
+        return t
+    }
+
+    /**
+     * One otherwise clean rep in which the shoulders move from [topY] to
+     * [bottomY]. Every angle gate passes, so only the travel check can fail it.
+     */
+    private fun travelRep(
+        profile: StrictnessProfile,
+        topY: Float,
+        bottomY: Float,
+        torsoLength: Float = 200f,
+        torsoConfidence: Float = 0.9f,
+    ): Pair<Int, CounterUpdate> {
+        val counter = PushUpCounter(profile)
+        val top = counter.travelHold(175f, topY, 0L, settle, torsoLength, torsoConfidence)
+        counter.travelHold(70f, bottomY, top, 500L, torsoLength, torsoConfidence)
+        val result = counter.onFrame(
+            travelMetrics(175f, topY, torsoLength, torsoConfidence),
+            top + 900L,
+        )
+        return counter.reps to result
+    }
+
+    @Test
+    fun `a descent that drops the shoulders counts`() {
+        val (reps, _) = travelRep(standard, topY = 100f, bottomY = 190f)
+        assertEquals(1, reps)
+    }
+
+    @Test
+    fun `an arm curled in front of the camera banks nothing`() {
+        // Standing upright presents a locked-out elbow and a dead straight
+        // shoulder-hip-knee line, so every angle gate applauds. The body not
+        // having moved is the only thing that gives it away.
+        val (reps, result) = travelRep(standard, topY = 100f, bottomY = 100f)
+
+        assertEquals(0, reps)
+        assertEquals("Move your body, not just your arms", result.rejection)
+    }
+
+    @Test
+    fun `travel is judged against the athlete own torso, not in pixels`() {
+        // The same 50px drop: plenty for someone filling the frame, nowhere
+        // near enough for someone standing twice as far from the lens.
+        val (near, _) = travelRep(standard, topY = 100f, bottomY = 150f, torsoLength = 120f)
+        val (far, _) = travelRep(standard, topY = 100f, bottomY = 150f, torsoLength = 400f)
+
+        assertEquals(1, near)
+        assertEquals(0, far)
+    }
+
+    @Test
+    fun `a rep is allowed when the torso cannot be measured`() {
+        // Hips out of frame. Declining to judge beats failing a real push-up on
+        // a landmark the model is guessing at, which is how the body-line check
+        // already behaves.
+        val (reps, _) = travelRep(standard, topY = 100f, bottomY = 100f, torsoConfidence = 0.1f)
+        assertEquals(1, reps)
+    }
+
+    @Test
+    fun `brutal demands more travel than casual accepts`() {
+        val (lenient, _) = travelRep(casual, topY = 100f, bottomY = 150f)
+        val (strict, _) = travelRep(brutal, topY = 100f, bottomY = 150f)
+
+        assertEquals(1, lenient)
+        assertEquals(0, strict)
+    }
 }

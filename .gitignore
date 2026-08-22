@@ -11,22 +11,21 @@ captures/
 *.aab
 *.ap_
 *.dex
-release/
+
+# Deliberately NOT a bare `release/`. That pattern matches a directory of that
+# name at any depth, which silently swallowed both the release/ notice file and
+# the com.fitscroll.app.release source package - present on disk, absent from
+# every clone. Gradle's own release output already lives under build/.
 
 # Keystores - never commit signing material
 *.jks
 *.keystore
+keystore.properties
 
 # OS
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# Node / PWA tooling
-node_modules/
-dist/
-.env
-.env.local
 
 # Logs
 *.log

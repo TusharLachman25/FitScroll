@@ -12,10 +12,12 @@ FitScroll counts your push-ups with your phone's camera, banks each rep as one m
 |---|---|
 | **Earn** | Camera + on-device pose detection counts push-ups. 1 clean rep = 1 minute. |
 | **Bank** | Each minute expires exactly 24h after it was earned. Oldest minutes are spent first, so nothing evaporates that could have been used. |
-| **Spend** | While a blocked app is in the foreground, your balance drains in real time — one second per second. |
+| **Spend** | While a blocked app is in the foreground, your balance drains in real time — one second per second, measured rather than counted in ticks. A notification carries the running balance for the whole session. |
 | **Lock** | At zero, a lock screen lands **on top of** the blocked app — mid-scroll, not just on open. Leaving it drops you to the home screen, so there's no way through it. |
 
-Everything runs on-device. No account, no server, no sync, no telemetry.
+Everything that counts a rep or spends a minute runs on-device. No account, no sync, no analytics, and no camera frame ever leaves the phone.
+
+Sideloaded builds make exactly one network request: a fetch of a public file saying whether this build has been retired. See [Retiring a build](#retiring-a-build).
 
 ---
 
@@ -40,7 +42,9 @@ Two things get in the way on a sideloaded build, both by design on Android's par
 - **Play Protect blocks the install.** Any app that can see the foreground app trips this. Play Store → profile → Play Protect → ⚙ → turn off scanning, install, turn it back on. (Installing over ADB skips this entirely.)
 - **"Controlled by restricted setting."** Android 13+ won't let a sideloaded app enable Accessibility until you unlock it: Settings → Apps → FitScroll → ⋮ → **Allow restricted settings**. (Also not needed if you installed over ADB.)
 
-**Optional: Display over other apps.** Settings → Apps → Special access → Display over other apps → FitScroll. Blocking works without it — the lock screen is an *accessibility overlay*, which the service is granted directly. This permission only lets the lock screen's button jump you straight to the camera instead of you opening FitScroll yourself.
+**Optional: Display over other apps.** Settings → Apps → Special access → Display over other apps → FitScroll. Blocking works without it — the lock screen is an *accessibility overlay*, which the service is granted directly. This permission only lets the lock screen's button jump you straight to the camera instead of you opening FitScroll yourself. When it's missing, that button says so rather than appearing to do nothing.
+
+**Optional: Notifications.** Asked for once, on first launch. They carry two things: your balance counting down while a locked app is open, and a warning an hour before banked minutes expire unspent. Refuse it and you lose those two messages — nothing else changes.
 
 ---
 
@@ -50,46 +54,43 @@ Needs JDK 17+ and the Android SDK (`ANDROID_HOME` set, or `android/local.propert
 
 ```bash
 cd android
-./gradlew testDebugUnitTest     # 38 unit tests
+./gradlew testDebugUnitTest     # 88 unit tests
 ./gradlew assembleRelease       # APKs in app/build/outputs/apk/release/
 ```
 
-Release builds are signed with your local debug key on purpose. FitScroll is sideloaded rather than shipped through Play, so this keeps `assembleRelease` directly installable without a keystore ever entering the repository.
+### Signing
 
-### PWA
+Android identifies an app by package name **and signing certificate**. A build signed with a different key cannot update one already installed — it has to be uninstalled first, which deletes the user's banked minutes. So the key you hand builds out with is the key you are committed to.
+
+`assembleRelease` looks for `android/keystore.properties`. If it is missing it falls back to the debug key, so a fresh clone still builds something installable. **Anything you give to another person should be built with the real key**, or you have no upgrade path to them.
 
 ```bash
-cd web
-node --test                     # 38 rule tests, no install step
+keytool -genkeypair -v \
+  -keystore fitscroll-release.jks \
+  -alias fitscroll \
+  -keyalg RSA -keysize 4096 -validity 10000
+
+cp android/keystore.properties.example android/keystore.properties
+# fill in the passwords, then build
 ```
 
----
-
-## iPhone
-
-There's a PWA in [web/](web/) that gives you the push-up counter and the bank on iOS.
-
-**It cannot lock anything, and that is not a bug I can fix.** iOS gives third-party apps no way to see which app is in the foreground or to block one. The only sanctioned mechanism is Apple's Screen Time API (`FamilyControls`), whose entitlement needs a paid Apple Developer account *plus* individual approval from Apple, and is unavailable on a free personal team.
-
-What you get instead is a Shortcuts automation that opens FitScroll whenever Instagram launches, and time reconciled when you come back rather than metered live. That's real friction at the moment of the impulse — it's the same trick several commercial focus apps ship — but you can always swipe past it.
-
-Full walkthrough and the failure modes: **[docs/IOS_SETUP.md](docs/IOS_SETUP.md)**.
-
-The PWA deploys to GitHub Pages automatically **once this repo is public** — Pages can't serve a private repo on a Free plan, so the deploy job skips itself until then rather than failing on every push.
+Both the `.jks` and `keystore.properties` are gitignored. Back the `.jks` up somewhere you will still have it in five years: lose it and you can never ship an update that installs over what people already have. The long validity is deliberate — Play rejects uploads signed with an expired key, and an app already on a phone cannot be re-signed.
 
 ---
 
 ## Form strictness
 
-Settings has a 1–5 dial. Each level tightens four things at once, because loosening only depth produces a counter that pays a fast sloppy half-rep the same as a slow clean one.
+Settings has a 1–5 dial. Each level tightens five things at once, because loosening only depth produces a counter that pays a fast sloppy half-rep the same as a slow clean one.
 
-| Level | | Elbow depth | Lockout | Body line | Sag allowance | Min rep time |
-|---|---|---|---|---|---|---|
-| 1 | Casual | 115° | 142° | 100° | 1.50s | 0.35s |
-| 2 | Relaxed | 105° | 148° | 116° | 1.10s | 0.45s |
-| 3 | Standard | 92° | 152° | 128° | 0.80s | 0.60s |
-| 4 | Strict | 82° | 157° | 138° | 0.55s | 0.75s |
-| 5 | Brutal | 72° | 162° | 148° | 0.35s | 0.90s |
+| Level | | Elbow depth | Lockout | Body line | Sag allowance | Min rep time | Body travel |
+|---|---|---|---|---|---|---|---|
+| 1 | Casual | 115° | 142° | 100° | 1.50s | 0.35s | 0.20× |
+| 2 | Relaxed | 105° | 148° | 116° | 1.10s | 0.45s | 0.25× |
+| 3 | Standard | 92° | 152° | 128° | 0.80s | 0.6s | 0.30× |
+| 4 | Strict | 82° | 157° | 138° | 0.55s | 0.75s | 0.35× |
+| 5 | Brutal | 72° | 162° | 148° | 0.35s | 0.9s | 0.40× |
+
+**Body travel** is how far your shoulders must drop during a rep, as a multiple of your own shoulder-to-hip length. It's what makes a rep a *push-up* rather than an arm movement: stand up, hold the phone in front of you and curl, and every angle gate passes — locked-out elbow at the top, bent at the bottom, dead-straight body line throughout. Only the fact that your body never moved gives it away. Measured as a ratio so it holds at any distance from the lens, and set low enough that anyone actually on the floor clears it without thinking about it.
 
 **Tracking confidence is not on this dial**, and that's deliberate. It used to be — higher levels demanded a higher landmark likelihood — which meant level 5 was quietly asking for a *better view of you*, not a better push-up. Looking down at the floor is enough to drop the pose model's confidence across every landmark, so reps stopped counting entirely at level 5 while the identical rep counted at level 1. There is now a single visibility floor for all five levels; strictness governs form only.
 
@@ -103,27 +104,55 @@ If your legs are outside the frame the model *guesses* your knee position, so Fi
 
 ---
 
+## Retiring a build
+
+Copies handed out by hand have no update channel, so every sideloaded build checks one published file and withdraws itself if told to. This is how a preview build gets stood down once a supported one exists.
+
+The file lives at [release/status.json](release/status.json) and has to be reachable over plain HTTPS — the raw URL of a public repo, or a gist:
+
+```json
+{ "minVersionCode": 1, "message": "...", "updateUrl": "" }
+```
+
+It is a **version floor, not a switch**. Raise `minVersionCode` above the `versionCode` of the builds you want to stand down and they retire themselves; every build at or above it carries on. One number retires everything older at once, and a notice can never retire a build that did not exist when it was written. The committed default of `1` retires nothing.
+
+When a build retires it **stops blocking first**. Nothing stays locked, the lock screen comes down, the drain stops, and the app shows what happened with whatever `message` and `updateUrl` you published. The banked minutes stay on disk untouched, so they are still there for a build that installs over the top.
+
+Three things worth knowing before relying on it:
+
+- **It fails open, deliberately.** No answer — offline, firewalled, file moved, GitHub down — leaves the last known answer standing, and the first answer is "supported". Bricking someone's app because their aeroplane has no wifi would be a worse bug than a build living too long. The flip side is that blocking one domain defeats it. Like the rest of FitScroll, it is a commitment device rather than DRM.
+- **Checked at most every six hours**, and cached, so a retirement can take a while to land and survives restarts once it does.
+- **Nothing about it is one-way.** Lower the floor again and the build comes back.
+
+The Play build should not carry the check at all — it has a real update channel and no business calling home. Build it with the URL blanked:
+
+```bash
+./gradlew assembleRelease -Pfitscroll.statusUrl=
+```
+
+That compiles the notice URL to an empty string, and the gate never touches the network.
+
+---
+
 ## Honest notes
 
 **This is a commitment device, not a jail.** On Android you can disable the accessibility service or uninstall the app in under a minute. It works by adding friction at the moment of the impulse, not by being unbreakable. If you want a hard block, use Screen Time or Digital Wellbeing with a passcode someone else holds.
 
-**The APK requests more permissions than FitScroll uses.** `INTERNET`, `ACCESS_NETWORK_STATE`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED` and `FOREGROUND_SERVICE` are merged in from ML Kit's transitive Google Play Services dependencies, not declared by this code — see [AndroidManifest.xml](android/app/src/main/AndroidManifest.xml) for what FitScroll actually asks for. They're left in place because stripping permissions from GMS libraries is a known cause of runtime crashes. The pose model is bundled in the APK and inference is local: no camera frame is uploaded anywhere.
+**The APK requests more permissions than FitScroll uses.** FitScroll itself declares five: `CAMERA`, `SYSTEM_ALERT_WINDOW`, `POST_NOTIFICATIONS`, `INTERNET` (for the retirement check, and nothing else) and the accessibility service binding. `ACCESS_NETWORK_STATE`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED` and `FOREGROUND_SERVICE` are merged in from ML Kit's transitive Google Play Services dependencies, not declared by this code — see [AndroidManifest.xml](android/app/src/main/AndroidManifest.xml) for what FitScroll actually asks for. They're left in place because stripping permissions from GMS libraries is a known cause of runtime crashes. The pose model is bundled in the APK and inference is local: no camera frame is uploaded anywhere.
 
 **Rep counting is good, not perfect.** It's a 2D pose estimate from one camera. Prop the phone side-on with your whole body in frame. Bad lighting, a head-on angle, or baggy clothing all degrade it. Raise the strictness if it's generous; lower it if it's stingy.
 
+**Expiry rides the wall clock, and you own the wall clock.** Winding it back can't mint minutes — a credit stamped in the future is pulled back to now, so the worst it buys is one ordinary day — but nothing here pretends to be tamper-proof. See the first note.
+
 ---
-
-## Repo layout
-
-```
-android/   Native Kotlin app — the real enforcement
-web/       PWA for iPhone — counter, bank, soft gate
-docs/      Setup guides, including the iOS Shortcuts automation
-```
 
 ## Tests
 
-76 tests, no device required. The bank and the rep counter are pure functions taking an explicit `now`, so every rule — expiry boundaries, oldest-first spending, cap overflow, each anti-cheat gate, and the noise tolerance that stops clean reps being thrown away — is pinned down on both platforms.
+107 tests, no device required.
+
+The rules live in pure functions taking an explicit `now` — the bank, the rep counter, the blocking decision, the drain reconciler — so expiry boundaries, oldest-first spending, cap overflow, every anti-cheat gate and the noise tolerance that stops clean reps being thrown away are all pinned down without a device or a 24-hour wait.
+
+The parts that genuinely need Android get Robolectric: the stored ledger, its reload, the day rollover, and the corrupt-ledger path that has to fail into an empty bank rather than a crash loop — because a crash loop would leave the accessibility service holding the block with no way to reach the camera.
 
 ## License
 

@@ -1,5 +1,11 @@
 package com.fitscroll.app.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -73,6 +80,27 @@ fun HomeScreen(
         mutableStateOf(BlockingStatus.isAccessibilityServiceEnabled(context))
     }
     var overlayOn by remember { mutableStateOf(BlockingStatus.canDrawOverlays(context)) }
+
+    // Asked once, on the first visit, and never again. Notifications carry the
+    // live balance and the expiry warning, both of which are worth having - but
+    // neither is load-bearing, and an app about self-control that nags for
+    // permissions every time it opens has picked the wrong fight. The result is
+    // deliberately ignored: refusing simply means those two messages never
+    // arrive.
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
+
+    LaunchedEffect(Unit) {
+        val needed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+
+        if (needed && !settings.current.notificationsRequested) {
+            settings.markNotificationsRequested()
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     // The balance moves without any action on this screen: credits expire on a
     // wall clock, and the accessibility service drains it from another
@@ -221,10 +249,13 @@ private fun BalanceCard(
         Text(
             text = when {
                 empty -> "Your blocked apps are locked. One push-up buys one minute."
-                nextExpiryAt == null -> "Ready to spend."
+                // No null case for nextExpiryAt below it: a live balance always
+                // has a live credit behind it, so the empty branch above is the
+                // only way it can be absent.
                 expiringSoonSeconds > 0 ->
                     "${formatBalance(expiringSoonSeconds)} expires within the hour — use it or lose it."
-                else -> "Oldest minutes expire ${formatTimeUntil(nextExpiryAt)}."
+                nextExpiryAt != null -> "Oldest minutes expire ${formatTimeUntil(nextExpiryAt)}."
+                else -> "Ready to spend."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = if (expiringSoonSeconds > 0 && !empty) Amber else TextMuted,

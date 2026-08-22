@@ -9,6 +9,7 @@ import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseLandmark
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
+import kotlin.math.hypot
 import kotlin.math.max
 
 /** One tracked joint, in the coordinate space of the rotated analysis image. */
@@ -145,6 +146,7 @@ class PoseAnalyzer(private val onResult: (PoseResult) -> Unit) : ImageAnalysis.A
             else -> {
                 val weight = left.confidence + right.confidence
                 val bodyWeight = left.bodyConfidence + right.bodyConfidence
+                val torsoWeight = left.torsoConfidence + right.torsoConfidence
                 if (weight <= 0f) {
                     left
                 } else {
@@ -165,6 +167,22 @@ class PoseAnalyzer(private val onResult: (PoseResult) -> Unit) : ImageAnalysis.A
                         // perfectly good reading.
                         confidence = max(left.confidence, right.confidence),
                         bodyConfidence = max(left.bodyConfidence, right.bodyConfidence),
+                        // Shoulder height and torso length are blended on torso
+                        // confidence for the same reason the body line is: a
+                        // clear arm must not vouch for a guessed hip.
+                        shoulderY = if (torsoWeight <= 0f) {
+                            left.shoulderY
+                        } else {
+                            (left.shoulderY * left.torsoConfidence +
+                                right.shoulderY * right.torsoConfidence) / torsoWeight
+                        },
+                        torsoLength = if (torsoWeight <= 0f) {
+                            left.torsoLength
+                        } else {
+                            (left.torsoLength * left.torsoConfidence +
+                                right.torsoLength * right.torsoConfidence) / torsoWeight
+                        },
+                        torsoConfidence = max(left.torsoConfidence, right.torsoConfidence),
                     )
                 }
             }
@@ -209,6 +227,16 @@ class PoseAnalyzer(private val onResult: (PoseResult) -> Unit) : ImageAnalysis.A
                 hip.inFrameLikelihood,
                 knee.inFrameLikelihood,
             ),
+            shoulderY = shoulder.position.y,
+            torsoLength = hypot(
+                shoulder.position.x - hip.position.x,
+                shoulder.position.y - hip.position.y,
+            ),
+            // The knee is deliberately left out. Measuring how far the body
+            // moved needs only the shoulder and the hip, and demanding a
+            // visible knee would switch the check off for anyone whose legs sit
+            // outside the frame - which is most people propping up a phone.
+            torsoConfidence = minOf(shoulder.inFrameLikelihood, hip.inFrameLikelihood),
         )
     }
 

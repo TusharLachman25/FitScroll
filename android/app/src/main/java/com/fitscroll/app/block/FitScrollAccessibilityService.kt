@@ -8,12 +8,17 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import com.fitscroll.app.MainActivity
 import com.fitscroll.app.data.BankRepository
 import com.fitscroll.app.data.Settings
 import com.fitscroll.app.data.SettingsRepository
+import com.fitscroll.app.notify.FitScrollNotifications
+import com.fitscroll.app.release.ReleaseGate
 
 /**
  * Watches which app is in front and enforces the bank against it.
@@ -34,12 +39,26 @@ class FitScrollAccessibilityService : AccessibilityService() {
     private lateinit var settings: SettingsRepository
     private lateinit var lockOverlay: LockOverlay
     private lateinit var keyguard: KeyguardManager
+    private lateinit var classifier: ForegroundClassifier
+    private lateinit var drainStore: DrainStore
+    private lateinit var power: PowerManager
+    private lateinit var notifications: FitScrollNotifications
+    private lateinit var releaseGate: ReleaseGate
 
     private val handler = Handler(Looper.getMainLooper())
 
     /** The blocked package currently being charged for, if any. */
     private var drainingPackage: String? = null
     private var warningShown = false
+
+    /** Cached so the readout can be updated without a PackageManager lookup. */
+    private var drainAppLabel: String = ""
+    private var lastDrainLabel: String? = null
+
+    /** elapsedRealtime at the last charge, and the sub-second remainder of it. */
+    private var lastChargedAt: Long = 0L
+    private var carryMillis: Long = 0L
+    private var lastPersistedAt: Long = 0L
 
     /**
      * The last package seen coming to the front, whether charged for or not.
@@ -48,6 +67,10 @@ class FitScrollAccessibilityService : AccessibilityService() {
      * going dark and coming back is not one. Without a remembered foreground,
      * the only route back into a drain is switching apps — which is exactly
      * what someone resuming an interrupted scroll does not do.
+     *
+     * Only ever written for a window that replaced the foreground app. A
+     * keyboard or a share sheet used to land here too, so unlocking the phone
+     * re-evaluated *that* package, found it unblocked, and left the meter off.
      */
     private var lastForegroundPackage: String? = null
 
@@ -85,27 +108,33 @@ class FitScrollAccessibilityService : AccessibilityService() {
         settings = SettingsRepository.get(this)
         lockOverlay = LockOverlay(this)
         keyguard = getSystemService(KeyguardManager::class.java)
+        power = getSystemService(PowerManager::class.java)
+        drainStore = DrainStore(this)
+        notifications = FitScrollNotifications(this)
+        releaseGate = ReleaseGate.get(this)
+        classifier = ForegroundClassifier(this).also { it.start() }
 
-        registerReceiver(
+        // Legal to omit the export flag today, because all three of these are
+        // protected system broadcasts. Named anyway: adding a fourth action
+        // that is not protected would throw here, and a SecurityException in
+        // onServiceConnected takes the blocking down without a word.
+        ContextCompat.registerReceiver(
+            this,
             screenReceiver,
             IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_USER_PRESENT)
             },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
         )
+
+        reconcileInterruptedDrain()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val packageName = event.packageName?.toString() ?: return
-
-        // The notification shade and quick settings raise a window over the
-        // current app without replacing it. Treating that as an app switch
-        // would pause the drain every time the user glanced at a notification.
-        if (packageName in TRANSIENT_SYSTEM_PACKAGES) return
-
-        lastForegroundPackage = packageName
         onForegroundApp(packageName)
     }
 
@@ -113,6 +142,7 @@ class FitScrollAccessibilityService : AccessibilityService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         stopDrain()
+        classifier.stop()
         // Leaving a window behind when the service is switched off would cover
         // the whole phone with no way to reach the buttons.
         lockOverlay.hide()
@@ -142,32 +172,50 @@ class FitScrollAccessibilityService : AccessibilityService() {
     }
 
     private fun onForegroundApp(foreground: String) {
-        if (foreground == packageName) {
+        val action = BlockPolicy.decide(
+            foreground = foreground,
+            ownPackage = packageName,
+            blockedPackages = settings.current.blockedPackages,
+            isTransientWindow = classifier.isTransientWindow(foreground),
+            balanceSeconds = bank.balanceSeconds(),
+            // Read per decision rather than latched at connect: a build can be
+            // retired while the service is already running, and the next window
+            // change should be the one that lets go.
+            isRetired = releaseGate.state.value.retired,
+        )
+
+        // Returns before the remembered foreground is touched: a window that
+        // only covered the app must leave no trace of having been in front.
+        if (action is BlockAction.Ignore) return
+
+        lastForegroundPackage = foreground
+
+        when (action) {
+            is BlockAction.Ignore -> Unit
+
             // Our own UI. The overlay is deliberately left alone: it is our
             // window too, and on some devices attaching it reports FitScroll as
             // foreground, which would tear the lock down the instant it
             // appeared. The buttons hide it explicitly when they are used.
-            stopDrain()
-            return
-        }
+            is BlockAction.StandDown -> stopDrain()
 
-        if (foreground !in settings.current.blockedPackages) {
             // Swiping away to something else counts as backing off, so the lock
             // should not follow the user around on top of unrelated apps.
-            lockOverlay.hide()
-            stopDrain()
-            return
-        }
+            is BlockAction.Release -> {
+                lockOverlay.hide()
+                stopDrain()
+            }
 
-        val remaining = bank.balanceSeconds()
-        if (remaining <= 0) {
-            stopDrain()
-            lock(foreground)
-            return
-        }
+            is BlockAction.Drain -> {
+                lockOverlay.hide()
+                startDrain(action.packageName, action.remainingSeconds)
+            }
 
-        lockOverlay.hide()
-        startDrain(foreground, remaining)
+            is BlockAction.Lock -> {
+                stopDrain()
+                lock(action.packageName)
+            }
+        }
     }
 
     private fun startDrain(packageName: String, remainingSeconds: Int) {
@@ -175,22 +223,67 @@ class FitScrollAccessibilityService : AccessibilityService() {
 
         drainingPackage = packageName
         warningShown = false
+        lastChargedAt = SystemClock.elapsedRealtime()
+        lastPersistedAt = lastChargedAt
+        carryMillis = 0L
+        drainStore.record(packageName, System.currentTimeMillis())
         handler.removeCallbacks(tick)
         handler.postDelayed(tick, TICK_MILLIS)
 
+        val label = formatRemaining(remainingSeconds)
+        drainAppLabel = AppInventory.labelFor(this, packageName)
+        lastDrainLabel = label
+
         // Opening with the balance makes the cost visible at the moment of the
-        // decision, which is the whole point of the app.
-        toast(formatRemaining(remainingSeconds) + " left")
+        // decision, which is the whole point of the app. The toast says it
+        // once; the notification keeps saying it for the whole session, which
+        // is the half a toast could never do.
+        toast("$label left")
+        notifications.showDraining(drainAppLabel, label)
     }
 
     private fun stopDrain() {
         drainingPackage = null
         warningShown = false
+        carryMillis = 0L
+        lastDrainLabel = null
         handler.removeCallbacks(tick)
+        drainStore.clear()
+        notifications.hideDraining()
     }
 
     /**
-     * Charges one second per second of screen time.
+     * Settles a drain that was cut short by the process being killed.
+     *
+     * The service is never told it is about to go away, so the time between the
+     * last charge and coming back is unobserved. It is charged for, because the
+     * likeliest reason to be killed mid-drain is a memory-hungry app being
+     * scrolled - but it is capped hard, since this is the one number a moved
+     * clock or a long-dead process could otherwise inflate into an empty bank.
+     */
+    private fun reconcileInterruptedDrain() {
+        val pending = drainStore.take() ?: return
+
+        // Only while the phone is actually in use. Reconnecting after a kill
+        // that happened with the screen off would otherwise bill for a pocket.
+        if (keyguard.isKeyguardLocked || !power.isInteractive) return
+
+        val owed = DrainMath.reconcileSeconds(
+            pending = pending,
+            nowWall = System.currentTimeMillis(),
+            capSeconds = RECONCILE_CAP_SECONDS,
+        )
+        if (owed > 0) bank.spend(owed)
+
+        // Assume the scroll is still going. The next window event corrects it
+        // if not, and being wrong that way costs a moment of billing rather
+        // than an unmetered app.
+        lastForegroundPackage = pending.packageName
+        onForegroundApp(pending.packageName)
+    }
+
+    /**
+     * Charges for the screen time that has actually elapsed.
      */
     private val tick = object : Runnable {
         override fun run() {
@@ -203,25 +296,69 @@ class FitScrollAccessibilityService : AccessibilityService() {
                 return
             }
 
-            val spent = bank.spend(TICK_SECONDS)
-            val remaining = bank.balanceSeconds()
+            val now = SystemClock.elapsedRealtime()
 
-            if (spent < TICK_SECONDS || remaining <= 0) {
-                stopDrain()
-                lock(packageName)
-                return
-            }
+            // Measured rather than assumed. postDelayed re-arms only after the
+            // body has run, so a tick is always a little longer than a second -
+            // and a busy main thread makes it much longer. Charging a flat
+            // second per tick undercharged every session by that difference,
+            // and handed out real time whenever the phone stuttered.
+            //
+            // elapsedRealtime, not the wall clock: this is a duration, and it
+            // must not move when a timezone or an NTP correction does.
+            val elapsed = (now - lastChargedAt).coerceIn(0L, MAX_CATCHUP_MILLIS) + carryMillis
+            lastChargedAt = now
 
-            if (settings.current.warnBeforeLock &&
-                !warningShown &&
-                remaining <= Settings.WARN_AT_SECONDS
-            ) {
-                warningShown = true
-                toast("${remaining}s left — bank more or wrap up")
+            val seconds = (elapsed / 1_000L).toInt()
+            // The sub-second remainder is carried, not dropped. Truncating it
+            // every tick would give away most of a second per second.
+            carryMillis = elapsed % 1_000L
+
+            if (seconds > 0) {
+                val spent = bank.spend(seconds)
+                val remaining = bank.balanceSeconds()
+
+                if (spent < seconds || remaining <= 0) {
+                    stopDrain()
+                    lock(packageName)
+                    return
+                }
+
+                persistProgress(packageName, now)
+
+                // Redrawn only when the number visibly changes: once a minute
+                // for most of a session, once a second in the last minute,
+                // which is exactly when it is worth watching.
+                val label = formatRemaining(remaining)
+                if (label != lastDrainLabel) {
+                    lastDrainLabel = label
+                    notifications.showDraining(drainAppLabel, label)
+                }
+
+                if (settings.current.warnBeforeLock &&
+                    !warningShown &&
+                    remaining <= Settings.WARN_AT_SECONDS
+                ) {
+                    warningShown = true
+                    toast("${remaining}s left — bank more or wrap up")
+                }
             }
 
             handler.postDelayed(this, TICK_MILLIS)
         }
+    }
+
+    /**
+     * Notes progress for the reconciler, on a timer rather than every tick.
+     *
+     * What it feeds is capped anyway, so accuracy to within the interval is
+     * plenty, and the alternative is a second file rewrite every second on top
+     * of the ledger's own.
+     */
+    private fun persistProgress(packageName: String, nowElapsed: Long) {
+        if (nowElapsed - lastPersistedAt < PERSIST_EVERY_MILLIS) return
+        lastPersistedAt = nowElapsed
+        drainStore.record(packageName, System.currentTimeMillis())
     }
 
     /**
@@ -243,6 +380,7 @@ class FitScrollAccessibilityService : AccessibilityService() {
         lockOverlay.show(
             appLabel = AppInventory.labelFor(this, blockedPackage),
             balanceLabel = formatRemaining(bank.balanceSeconds()),
+            canLaunchCamera = BlockingStatus.canDrawOverlays(this),
             onEarn = {
                 leaveBlockedApp()
                 openWorkout()
@@ -288,10 +426,14 @@ class FitScrollAccessibilityService : AccessibilityService() {
 
     private companion object {
         const val TICK_MILLIS = 1_000L
-        const val TICK_SECONDS = 1
 
-        val TRANSIENT_SYSTEM_PACKAGES = setOf(
-            "com.android.systemui",
-        )
+        /** Most one tick may charge for, however long the main thread stalled. */
+        const val MAX_CATCHUP_MILLIS = 5_000L
+
+        /** How often the reconciler's marker is written while draining. */
+        const val PERSIST_EVERY_MILLIS = 5_000L
+
+        /** Ceiling on what an interrupted drain can cost when it is settled. */
+        const val RECONCILE_CAP_SECONDS = 120
     }
 }
