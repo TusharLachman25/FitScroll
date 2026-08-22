@@ -99,6 +99,26 @@ android {
         }
     }
 
+    // `app-arm64-v8a-release.apk` is a filename for a build server, not for
+    // something you send a person. The APK is handed over by hand - in a chat,
+    // over email - where the filename is the only label it has, and the version
+    // in it is the only way anyone can tell two of them apart later.
+    applicationVariants.all {
+        val variant = this
+        outputs.all {
+            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            val abi = when (output.getFilter(com.android.build.OutputFile.ABI)) {
+                "arm64-v8a" -> "-arm64"
+                "armeabi-v7a" -> "-arm32"
+                // The universal APK gets the bare name: it runs anywhere, so it
+                // is the one to send when you do not want to explain anything.
+                else -> ""
+            }
+            val channel = if (variant.buildType.name == "release") "" else "-${variant.buildType.name}"
+            output.outputFileName = "FitScroll-${variant.versionName}$abi$channel.apk"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
