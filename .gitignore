@@ -16,6 +16,7 @@ release/
 # Keystores - never commit signing material
 *.jks
 *.keystore
+keystore.properties
 
 # OS
 .DS_Store

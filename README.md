@@ -56,7 +56,23 @@ cd android
 ./gradlew assembleRelease       # APKs in app/build/outputs/apk/release/
 ```
 
-Release builds are signed with your local debug key on purpose. FitScroll is sideloaded rather than shipped through Play, so this keeps `assembleRelease` directly installable without a keystore ever entering the repository.
+### Signing
+
+Android identifies an app by package name **and signing certificate**. A build signed with a different key cannot update one already installed — it has to be uninstalled first, which deletes the user's banked minutes. So the key you hand builds out with is the key you are committed to.
+
+`assembleRelease` looks for `android/keystore.properties`. If it is missing it falls back to the debug key, so a fresh clone still builds something installable. **Anything you give to another person should be built with the real key**, or you have no upgrade path to them.
+
+```bash
+keytool -genkeypair -v \
+  -keystore fitscroll-release.jks \
+  -alias fitscroll \
+  -keyalg RSA -keysize 4096 -validity 10000
+
+cp android/keystore.properties.example android/keystore.properties
+# fill in the passwords, then build
+```
+
+Both the `.jks` and `keystore.properties` are gitignored. Back the `.jks` up somewhere you will still have it in five years: lose it and you can never ship an update that installs over what people already have. The long validity is deliberate — Play rejects uploads signed with an expired key, and an app already on a phone cannot be re-signed.
 
 ---
 
