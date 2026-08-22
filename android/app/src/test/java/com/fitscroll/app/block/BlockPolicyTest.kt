@@ -18,12 +18,14 @@ class BlockPolicyTest {
         foreground: String,
         transient: Boolean = false,
         balance: Int = 600,
+        retired: Boolean = false,
     ) = BlockPolicy.decide(
         foreground = foreground,
         ownPackage = own,
         blockedPackages = blocked,
         isTransientWindow = transient,
         balanceSeconds = balance,
+        isRetired = retired,
     )
 
     @Test
@@ -86,5 +88,31 @@ class BlockPolicyTest {
             balanceSeconds = 0,
         )
         assertEquals(BlockAction.Release, action)
+    }
+
+    // ------------------------------------------------------------ retirement
+
+    @Test
+    fun `a retired build stops blocking, even with an empty bank`() {
+        // The failure that matters: retiring a build that kept enforcing would
+        // strand its users behind a lock screen with no way to earn out of it.
+        assertEquals(BlockAction.Release, decide(instagram, balance = 0, retired = true))
+    }
+
+    @Test
+    fun `a retired build stops draining a bank that still has minutes in it`() {
+        assertEquals(BlockAction.Release, decide(instagram, balance = 600, retired = true))
+    }
+
+    @Test
+    fun `retirement outranks the transient-window test`() {
+        // Release rather than Ignore, so a lock already on screen is dropped
+        // rather than frozen in place by the next keyboard that appears.
+        assertEquals(BlockAction.Release, decide(keyboard, transient = true, retired = true))
+    }
+
+    @Test
+    fun `an unretired build is unaffected by the flag being present`() {
+        assertEquals(BlockAction.Drain(instagram, 600), decide(instagram, retired = false))
     }
 }

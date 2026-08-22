@@ -18,6 +18,20 @@
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      Used for exactly one thing: fetching the retirement notice that tells a
+      sideloaded build it has been superseded. A plain GET of a static public
+      file, with no query string, no identifier and no body. Nothing else in
+      FitScroll reaches the network - the pose model is bundled and inference is
+      local. Play builds are built with the notice URL blank and never call out
+      at all.
+
+      Note that this permission is already merged into the APK by ML Kit's Play
+      Services dependencies, so declaring it changes nothing a user could see.
+      It is declared because we now genuinely use it.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-feature
         android:name="android.hardware.camera"
         android:required="true" />

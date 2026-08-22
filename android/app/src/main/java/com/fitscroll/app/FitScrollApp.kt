@@ -4,6 +4,7 @@ import android.app.Application
 import com.fitscroll.app.data.BankRepository
 import com.fitscroll.app.notify.ExpiryReminder
 import com.fitscroll.app.notify.FitScrollNotifications
+import com.fitscroll.app.release.ReleaseGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,6 +29,11 @@ class FitScrollApp : Application() {
         super.onCreate()
 
         FitScrollNotifications(this).ensureChannels()
+
+        // Checked once per process start, rate-limited inside the gate. Failing
+        // to reach it leaves the previous answer standing, so this can be
+        // fire-and-forget: there is no failure here worth reporting to anyone.
+        scope.launch { ReleaseGate.get(this@FitScrollApp).refresh() }
 
         // Distinct on the expiry instant alone. The balance moves every second
         // during a drain and none of that changes when the oldest batch dies,

@@ -41,7 +41,17 @@ object BlockPolicy {
         blockedPackages: Set<String>,
         isTransientWindow: Boolean,
         balanceSeconds: Int,
+        isRetired: Boolean = false,
     ): BlockAction = when {
+        // Ahead of everything, including the blocked-app test below.
+        //
+        // A withdrawn build must stop enforcing before it stops doing anything
+        // else. Retiring a build that kept its lock screen would strand people
+        // behind it with no way to earn their way out - the exact opposite of
+        // what withdrawing it is for. Release also drops any lock already on
+        // screen, so a build retired mid-scroll lets go rather than freezing.
+        isRetired -> BlockAction.Release
+
         // Checked before anything else. A blocked app is never a transient
         // window, and misclassifying one would hand out unmetered screen time,
         // which is the failure this whole class exists to prevent.

@@ -17,6 +17,14 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+// Where a sideloaded build looks to find out whether it has been withdrawn.
+//
+// Overridable so the file can be moved without a code change, and blankable so
+// a Play build carries no check at all: `-Pfitscroll.statusUrl=`. A build from
+// the store has a supported upgrade path already and no business calling home.
+val releaseStatusUrl = (project.findProperty("fitscroll.statusUrl") as String?)
+    ?: "https://raw.githubusercontent.com/TusharLachman25/FitScroll/main/release/status.json"
+
 android {
     namespace = "com.fitscroll.app"
     compileSdk = 36
@@ -28,6 +36,8 @@ android {
         versionCode = 5
         versionName = "0.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "RELEASE_STATUS_URL", "\"$releaseStatusUrl\"")
 
         // x86 and x86_64 only ever run on emulators. Excluding them here rather
         // than only in `splits` matters, because the universal APK packages

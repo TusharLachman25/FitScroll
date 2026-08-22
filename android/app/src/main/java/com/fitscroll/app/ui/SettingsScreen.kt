@@ -180,8 +180,11 @@ fun SettingsScreen(
         Spacer(Modifier.height(24.dp))
 
         Text(
-            text = "Everything runs on your phone. No account, no server, " +
-                "no frame from the camera ever leaves the device.",
+            text = "Your push-ups, your bank and the camera all stay on this " +
+                "phone. No account, no sync, and no frame from the camera ever " +
+                "leaves the device.\n\nSideloaded builds check one public file " +
+                "for a notice saying this version has been retired. That request " +
+                "sends nothing but the fact that somebody asked for the file.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextMuted,
             textAlign = TextAlign.Center,

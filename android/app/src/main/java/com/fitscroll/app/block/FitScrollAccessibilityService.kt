@@ -18,6 +18,7 @@ import com.fitscroll.app.data.BankRepository
 import com.fitscroll.app.data.Settings
 import com.fitscroll.app.data.SettingsRepository
 import com.fitscroll.app.notify.FitScrollNotifications
+import com.fitscroll.app.release.ReleaseGate
 
 /**
  * Watches which app is in front and enforces the bank against it.
@@ -42,6 +43,7 @@ class FitScrollAccessibilityService : AccessibilityService() {
     private lateinit var drainStore: DrainStore
     private lateinit var power: PowerManager
     private lateinit var notifications: FitScrollNotifications
+    private lateinit var releaseGate: ReleaseGate
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -109,6 +111,7 @@ class FitScrollAccessibilityService : AccessibilityService() {
         power = getSystemService(PowerManager::class.java)
         drainStore = DrainStore(this)
         notifications = FitScrollNotifications(this)
+        releaseGate = ReleaseGate.get(this)
         classifier = ForegroundClassifier(this).also { it.start() }
 
         // Legal to omit the export flag today, because all three of these are
@@ -175,6 +178,10 @@ class FitScrollAccessibilityService : AccessibilityService() {
             blockedPackages = settings.current.blockedPackages,
             isTransientWindow = classifier.isTransientWindow(foreground),
             balanceSeconds = bank.balanceSeconds(),
+            // Read per decision rather than latched at connect: a build can be
+            // retired while the service is already running, and the next window
+            // change should be the one that lets go.
+            isRetired = releaseGate.state.value.retired,
         )
 
         // Returns before the remembered foreground is touched: a window that
