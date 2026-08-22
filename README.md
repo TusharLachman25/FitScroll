@@ -27,9 +27,9 @@ Grab an APK from the [latest CI run](../../actions/workflows/ci.yml) (artifact `
 
 | APK | Size | Use it if |
 |---|---|---|
-| `app-arm64-v8a-release.apk` | 29 MB | **Almost certainly this one** — every phone from roughly 2016 onward |
-| `app-armeabi-v7a-release.apk` | 23 MB | Older 32-bit device |
-| `app-universal-release.apk` | 44 MB | Not sure — works on both |
+| `FitScroll-0.4.0.apk` | 44 MB | **Send this one.** Runs on any phone, nothing to explain |
+| `FitScroll-0.4.0-arm64.apk` | 29 MB | You want it smaller — every phone from roughly 2016 onward |
+| `FitScroll-0.4.0-arm32.apk` | 24 MB | You want it smaller — older 32-bit device |
 
 Transfer to your phone and open it. You'll need to allow installing from unknown sources; FitScroll is sideloaded, not on Play.
 
