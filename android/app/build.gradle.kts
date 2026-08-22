@@ -1,10 +1,29 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
+
+// Signing material lives outside the repository. When keystore.properties is
+// absent - a fresh clone, or CI - release builds fall back to the debug key so
+// `assembleRelease` still produces something installable.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use(::load)
+    }
+}
+
+// Where a sideloaded build looks to find out whether it has been withdrawn.
+//
+// Overridable so the file can be moved without a code change, and blankable so
+// a Play build carries no check at all: `-Pfitscroll.statusUrl=`. A build from
+// the store has a supported upgrade path already and no business calling home.
+val releaseStatusUrl = (project.findProperty("fitscroll.statusUrl") as String?)
+    ?: "https://raw.githubusercontent.com/TusharLachman25/FitScroll/main/release/status.json"
 
 android {
     namespace = "com.fitscroll.app"
@@ -14,9 +33,11 @@ android {
         applicationId = "com.fitscroll.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.3.1"
+        versionCode = 5
+        versionName = "0.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "RELEASE_STATUS_URL", "\"$releaseStatusUrl\"")
 
         // x86 and x86_64 only ever run on emulators. Excluding them here rather
         // than only in `splits` matters, because the universal APK packages
@@ -24,6 +45,17 @@ android {
         // is 82MB, nearly half of it code no phone can execute.
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+    }
+
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
         }
     }
 
@@ -35,10 +67,16 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // FitScroll is distributed by sideloading, not through Play. Signing release
-            // builds with the local debug key keeps `assembleRelease` directly
-            // installable without committing a keystore to the repository.
-            signingConfig = signingConfigs.getByName("debug")
+            // Android identifies an app by package name *and* signing certificate, so
+            // the key chosen here decides whether a future Play release can update
+            // the copies handed out by hand or has to replace them - and replacing
+            // means uninstalling, which takes the user's banked minutes with it.
+            //
+            // Falls back to the debug key when there is no keystore.properties, so a
+            // clone still builds something installable. Anything actually given to
+            // another person should be built with the real key.
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug")
         }
         debug {
             applicationIdSuffix = ".debug"

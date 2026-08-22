@@ -15,7 +15,9 @@ FitScroll counts your push-ups with your phone's camera, banks each rep as one m
 | **Spend** | While a blocked app is in the foreground, your balance drains in real time — one second per second, measured rather than counted in ticks. A notification carries the running balance for the whole session. |
 | **Lock** | At zero, a lock screen lands **on top of** the blocked app — mid-scroll, not just on open. Leaving it drops you to the home screen, so there's no way through it. |
 
-Everything runs on-device. No account, no server, no sync, no telemetry.
+Everything that counts a rep or spends a minute runs on-device. No account, no sync, no analytics, and no camera frame ever leaves the phone.
+
+Sideloaded builds make exactly one network request: a fetch of a public file saying whether this build has been retired. See [Retiring a build](#retiring-a-build).
 
 ---
 
@@ -56,7 +58,23 @@ cd android
 ./gradlew assembleRelease       # APKs in app/build/outputs/apk/release/
 ```
 
-Release builds are signed with your local debug key on purpose. FitScroll is sideloaded rather than shipped through Play, so this keeps `assembleRelease` directly installable without a keystore ever entering the repository.
+### Signing
+
+Android identifies an app by package name **and signing certificate**. A build signed with a different key cannot update one already installed — it has to be uninstalled first, which deletes the user's banked minutes. So the key you hand builds out with is the key you are committed to.
+
+`assembleRelease` looks for `android/keystore.properties`. If it is missing it falls back to the debug key, so a fresh clone still builds something installable. **Anything you give to another person should be built with the real key**, or you have no upgrade path to them.
+
+```bash
+keytool -genkeypair -v \
+  -keystore fitscroll-release.jks \
+  -alias fitscroll \
+  -keyalg RSA -keysize 4096 -validity 10000
+
+cp android/keystore.properties.example android/keystore.properties
+# fill in the passwords, then build
+```
+
+Both the `.jks` and `keystore.properties` are gitignored. Back the `.jks` up somewhere you will still have it in five years: lose it and you can never ship an update that installs over what people already have. The long validity is deliberate — Play rejects uploads signed with an expired key, and an app already on a phone cannot be re-signed.
 
 ---
 
@@ -86,11 +104,41 @@ If your legs are outside the frame the model *guesses* your knee position, so Fi
 
 ---
 
+## Retiring a build
+
+Copies handed out by hand have no update channel, so every sideloaded build checks one published file and withdraws itself if told to. This is how a preview build gets stood down once a supported one exists.
+
+The file lives at [release/status.json](release/status.json) and has to be reachable over plain HTTPS — the raw URL of a public repo, or a gist:
+
+```json
+{ "minVersionCode": 1, "message": "...", "updateUrl": "" }
+```
+
+It is a **version floor, not a switch**. Raise `minVersionCode` above the `versionCode` of the builds you want to stand down and they retire themselves; every build at or above it carries on. One number retires everything older at once, and a notice can never retire a build that did not exist when it was written. The committed default of `1` retires nothing.
+
+When a build retires it **stops blocking first**. Nothing stays locked, the lock screen comes down, the drain stops, and the app shows what happened with whatever `message` and `updateUrl` you published. The banked minutes stay on disk untouched, so they are still there for a build that installs over the top.
+
+Three things worth knowing before relying on it:
+
+- **It fails open, deliberately.** No answer — offline, firewalled, file moved, GitHub down — leaves the last known answer standing, and the first answer is "supported". Bricking someone's app because their aeroplane has no wifi would be a worse bug than a build living too long. The flip side is that blocking one domain defeats it. Like the rest of FitScroll, it is a commitment device rather than DRM.
+- **Checked at most every six hours**, and cached, so a retirement can take a while to land and survives restarts once it does.
+- **Nothing about it is one-way.** Lower the floor again and the build comes back.
+
+The Play build should not carry the check at all — it has a real update channel and no business calling home. Build it with the URL blanked:
+
+```bash
+./gradlew assembleRelease -Pfitscroll.statusUrl=
+```
+
+That compiles the notice URL to an empty string, and the gate never touches the network.
+
+---
+
 ## Honest notes
 
 **This is a commitment device, not a jail.** On Android you can disable the accessibility service or uninstall the app in under a minute. It works by adding friction at the moment of the impulse, not by being unbreakable. If you want a hard block, use Screen Time or Digital Wellbeing with a passcode someone else holds.
 
-**The APK requests more permissions than FitScroll uses.** FitScroll itself declares four: `CAMERA`, `SYSTEM_ALERT_WINDOW`, `POST_NOTIFICATIONS` and the accessibility service binding. `INTERNET`, `ACCESS_NETWORK_STATE`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED` and `FOREGROUND_SERVICE` are merged in from ML Kit's transitive Google Play Services dependencies, not declared by this code — see [AndroidManifest.xml](android/app/src/main/AndroidManifest.xml) for what FitScroll actually asks for. They're left in place because stripping permissions from GMS libraries is a known cause of runtime crashes. The pose model is bundled in the APK and inference is local: no camera frame is uploaded anywhere.
+**The APK requests more permissions than FitScroll uses.** FitScroll itself declares five: `CAMERA`, `SYSTEM_ALERT_WINDOW`, `POST_NOTIFICATIONS`, `INTERNET` (for the retirement check, and nothing else) and the accessibility service binding. `ACCESS_NETWORK_STATE`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED` and `FOREGROUND_SERVICE` are merged in from ML Kit's transitive Google Play Services dependencies, not declared by this code — see [AndroidManifest.xml](android/app/src/main/AndroidManifest.xml) for what FitScroll actually asks for. They're left in place because stripping permissions from GMS libraries is a known cause of runtime crashes. The pose model is bundled in the APK and inference is local: no camera frame is uploaded anywhere.
 
 **Rep counting is good, not perfect.** It's a 2D pose estimate from one camera. Prop the phone side-on with your whole body in frame. Bad lighting, a head-on angle, or baggy clothing all degrade it. Raise the strictness if it's generous; lower it if it's stingy.
 
@@ -100,7 +148,7 @@ If your legs are outside the frame the model *guesses* your knee position, so Fi
 
 ## Tests
 
-88 tests, no device required.
+107 tests, no device required.
 
 The rules live in pure functions taking an explicit `now` — the bank, the rep counter, the blocking decision, the drain reconciler — so expiry boundaries, oldest-first spending, cap overflow, every anti-cheat gate and the noise tolerance that stops clean reps being thrown away are all pinned down without a device or a 24-hour wait.
 
